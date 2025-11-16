@@ -445,6 +445,63 @@ JSON:
             "conditions": [],
             "is_useful": True
         }
+    
+    def _log_llm_result(self, result: Dict, original_text: str, reason: Optional[str] = None, raw_json_response: Optional[str] = None) -> None:
+        """
+        Логирование результата LLM очистки в отдельный JSON-лог.
+        
+        Args:
+            result: результат clean_document
+            original_text: оригинальный текст документа
+            reason: причина логирования (например, "json_parse_failed")
+            raw_json_response: сырой JSON ответ от API (если доступен)
+        """
+        # Проверяем, что логгер инициализирован
+        if not self.llm_logger.handlers:
+            # Логгер не инициализирован (например, не удалось создать файл)
+            # Попробуем переинициализировать
+            try:
+                self._init_llm_logger()
+            except Exception:
+                pass
+            
+            # Если все еще нет хендлеров - выходим
+            if not self.llm_logger.handlers:
+                return
+
+        try:
+            log_record = {
+                "reason": reason,
+                "usefulness_score": result.get("usefulness_score"),
+                "is_useful": result.get("is_useful"),
+                "topics": result.get("topics", []),
+                "products": result.get("products", []),
+                "actions": result.get("actions", []),
+                "conditions": result.get("conditions", []),
+                # web_id может добавляться на следующих этапах — здесь обычно None,
+                # но поле оставляем для единообразия если в будущем туда будут писать
+                "web_id": result.get("web_id"),
+                # Превью текстов (усекаем, чтобы файл был разумного размера)
+                "original_text_preview": original_text[:1000],
+                "clean_text_preview": str(result.get("clean_text", ""))[:1000],
+            }
+            
+            # Добавляем сырой JSON ответ от API (если доступен)
+            if raw_json_response is not None:
+                # Ограничиваем длину сырого ответа (первые 2000 символов)
+                log_record["raw_json_response"] = raw_json_response[:2000]
+            
+            self.llm_logger.info(json.dumps(log_record, ensure_ascii=False))
+            
+            # Принудительно сбрасываем буферы всех хендлеров
+            for handler in self.llm_logger.handlers:
+                handler.flush()
+        except Exception as e:
+            # Логирование не должно ломать основной пайплайн
+            # Но можем вывести предупреждение в verbose режиме
+            if self.verbose:
+                print(f"  ⚠️  Ошибка логирования LLM результата: {e}")
+            pass
 
 
 class LLMDocumentCleaner:
