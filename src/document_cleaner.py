@@ -125,7 +125,9 @@ class DocumentCleaner:
 
         for idx, row in tqdm(docs_df.iterrows(), total=len(docs_df)):
             text = row[text_column]
-            cleaned = self.clean_document(text)
+            # Передаем web_id если есть
+            web_id = row.get('web_id') if 'web_id' in row else None
+            cleaned = self.clean_document(text, web_id=web_id)
 
             results.append({
                 **row.to_dict(),

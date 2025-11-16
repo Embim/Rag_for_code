@@ -204,8 +204,9 @@ class OpenRouterCleaner:
             row = docs_df.iloc[idx]
             text = row[text_column]
 
-            # Очищаем через API
-            cleaned = self.clean_document(text)
+            # Очищаем через API (передаем web_id если есть)
+            web_id = row.get('web_id') if 'web_id' in row else None
+            cleaned = self.clean_document(text, web_id=web_id)
 
             # Добавляем к результатам
             result_row = {

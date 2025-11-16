@@ -36,6 +36,7 @@ from src.config import (
     LLM_API_TIMEOUT,
     LLM_API_RETRIES,
     LLM_API_ROUTING,
+    LLM_API_MAX_TOKENS,
     LLM_PARALLEL_WORKERS,
     OPENROUTER_API_KEY,
     MODELS_DIR,
@@ -236,7 +237,7 @@ class LLMDocumentCleanerAPI:
             "model": self.model,
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.1,
-            "max_tokens": LLM_MAX_TOKENS,
+            "max_tokens": LLM_API_MAX_TOKENS,  # используем отдельный параметр для API (больше чем для локальной модели)
         }
         
         # Добавляем провайдера через extra_headers если указан
@@ -281,13 +282,18 @@ class LLMDocumentCleanerAPI:
         text = re.sub(r'\s+', ' ', text)
         return text.strip()
     
-    def clean_document(self, text: str) -> Dict:
-        """Очистка одного документа через API"""
+    def clean_document(self, text: str, web_id: Optional[int] = None) -> Dict:
+        """Очистка одного документа через API
+
+        Args:
+            text: текст документа
+            web_id: ID документа (опционально)
+        """
         # Предобработка
         text_preprocessed = self._preprocess_text_before_llm(text)
         
         if len(text_preprocessed.strip()) < 100:
-            return self._fallback_result(text_preprocessed)
+            return self._fallback_result(text_preprocessed, web_id=web_id)
         
         # Проверка кэша
         text_hash = hashlib.md5(text_preprocessed[:2000].encode('utf-8')).hexdigest()
@@ -433,6 +439,9 @@ class LLMDocumentCleanerAPI:
                     raw_result.setdefault("actions", [])
                     raw_result.setdefault("conditions", [])
                     raw_result["is_useful"] = bool(raw_result.get("usefulness_score", 0.5) >= 0.3)
+                    # Сохраняем web_id если был передан
+                    if web_id is not None:
+                        raw_result["web_id"] = web_id
                     
                     # Кэширование
                     if len(self._cache) >= self._cache_max_size:
@@ -446,7 +455,7 @@ class LLMDocumentCleanerAPI:
                     return raw_result
                 else:
                     # Fallback если JSON не найден
-                    fallback = self._fallback_result(text_truncated)
+                    fallback = self._fallback_result(text_truncated, web_id=web_id)
                     self._log_llm_result(fallback, original_text=text_truncated, reason="json_parse_failed", raw_json_response=raw_json_response)
                     return fallback
             
@@ -458,18 +467,18 @@ class LLMDocumentCleanerAPI:
                 else:
                     if self.verbose:
                         print(f"  ⚠️  Ошибка API после {self.retries} попыток: {e}")
-                    fallback = self._fallback_result(text_truncated)
+                    fallback = self._fallback_result(text_truncated, web_id=web_id)
                     self._log_llm_result(fallback, original_text=text_truncated, reason=str(e), raw_json_response=raw_json_response)
                     return fallback
-        
+
         # Если все попытки исчерпаны
-        fallback = self._fallback_result(text_truncated)
+        fallback = self._fallback_result(text_truncated, web_id=web_id)
         self._log_llm_result(fallback, original_text=text_truncated, reason="all_retries_exhausted", raw_json_response=raw_json_response)
         return fallback
     
-    def _fallback_result(self, text: str) -> Dict:
+    def _fallback_result(self, text: str, web_id: Optional[int] = None) -> Dict:
         """Fallback результат если API не сработал"""
-        return {
+        result = {
             "clean_text": text,
             "topics": [],
             "usefulness_score": 0.5,
@@ -478,6 +487,9 @@ class LLMDocumentCleanerAPI:
             "conditions": [],
             "is_useful": True
         }
+        if web_id is not None:
+            result["web_id"] = web_id
+        return result
     
     def _log_llm_result(self, result: Dict, original_text: str, reason: Optional[str] = None, raw_json_response: Optional[str] = None) -> None:
         """
@@ -714,12 +726,13 @@ class LLMDocumentCleaner:
         
         return text
 
-    def clean_document(self, text: str) -> Dict:
+    def clean_document(self, text: str, web_id: Optional[int] = None) -> Dict:
         """
         Очистка одного документа через LLM
 
         Args:
             text: исходный текст документа
+            web_id: ID документа (опционально)
 
         Returns:
             dict с полями:
@@ -730,6 +743,7 @@ class LLMDocumentCleaner:
                 - topics: список тем
                 - usefulness_score: оценка полезности (0-1)
                 - is_useful: bool
+                - web_id: ID документа (если был передан)
         """
         # Убеждаемся что модель загружена
         if self.llm is None:
@@ -737,10 +751,10 @@ class LLMDocumentCleaner:
 
         # Агрессивная предобработка перед LLM (удаляем очевидный мусор)
         text_preprocessed = self._preprocess_text_before_llm(text)
-        
+
         # Пропускаем очень короткие документы (после предобработки) - экономим время LLM
         if len(text_preprocessed.strip()) < 100:
-            fallback = self._fallback_result(text_preprocessed)
+            fallback = self._fallback_result(text_preprocessed, web_id=web_id)
             self._log_llm_result(fallback, original_text=text, reason="too_short_after_preprocessing")
             return fallback
         
@@ -844,6 +858,9 @@ JSON:
                 raw_result.setdefault("conditions", [])
                 # derive is_useful по прежней логике (порог ~0.3)
                 raw_result["is_useful"] = bool(raw_result.get("usefulness_score", 0.5) >= 0.3)
+                # Сохраняем web_id если был передан
+                if web_id is not None:
+                    raw_result["web_id"] = web_id
 
                 # Сохраняем в кэш (ограничиваем размер) - thread-safe
                 with self._cache_lock:
@@ -859,20 +876,20 @@ JSON:
                 return raw_result
             else:
                 # Fallback если JSON не найден
-                fallback = self._fallback_result(text_truncated)
+                fallback = self._fallback_result(text_truncated, web_id=web_id)
                 self._log_llm_result(fallback, original_text=text_truncated, reason="json_parse_failed")
                 return fallback
 
         except Exception as e:
             if self.verbose:
                 print(f"  ⚠️  Ошибка обработки: {e}")
-            fallback = self._fallback_result(text_truncated)
+            fallback = self._fallback_result(text_truncated, web_id=web_id)
             self._log_llm_result(fallback, original_text=text_truncated, reason=str(e))
             return fallback
 
-    def _fallback_result(self, text: str) -> Dict:
+    def _fallback_result(self, text: str, web_id: Optional[int] = None) -> Dict:
         """Fallback результат если LLM не работает"""
-        return {
+        result = {
             "clean_text": text,
             "products": [],
             "actions": [],
@@ -881,6 +898,9 @@ JSON:
             "usefulness_score": 0.5,
             "is_useful": True
         }
+        if web_id is not None:
+            result["web_id"] = web_id
+        return result
 
     def _log_llm_result(self, result: Dict, original_text: str, reason: Optional[str] = None, raw_json_response: Optional[str] = None) -> None:
         """
@@ -969,8 +989,9 @@ JSON:
         for idx, row in iterator:
             text = row[text_column]
 
-            # Очищаем через LLM
-            cleaned = self.clean_document(text)
+            # Очищаем через LLM (передаем web_id если есть)
+            web_id = row.get('web_id') if 'web_id' in row else None
+            cleaned = self.clean_document(text, web_id=web_id)
 
             # Создаем новую строку с оригинальными + новыми данными
             result_row = {

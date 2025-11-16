@@ -134,7 +134,7 @@ class StreamingDocumentProcessor:
 
         if self.llm_clean and self.llm_cleaner:
             try:
-                cleaned_result = self.llm_cleaner.clean_document(processed_text)
+                cleaned_result = self.llm_cleaner.clean_document(processed_text, web_id=int(doc_row.get('web_id', 0)))
 
                 # Фильтруем по полезности
                 usefulness = cleaned_result.get('usefulness_score', 1.0)
@@ -290,9 +290,9 @@ class StreamingDocumentProcessor:
                             processed_text, doc_row_result = self._preprocess_and_chunk(doc_row)
                             if processed_text is None:
                                 return None
-                            
+
                             try:
-                                cleaned_result = self.llm_cleaner.clean_document(processed_text)
+                                cleaned_result = self.llm_cleaner.clean_document(processed_text, web_id=int(doc_row.get('web_id', 0)))
                                 usefulness = cleaned_result.get('usefulness_score', 1.0)
                                 is_useful = cleaned_result.get('is_useful', True)
                                 
@@ -391,7 +391,7 @@ class StreamingDocumentProcessor:
                             topics = ''
                         
                         try:
-                            cleaned_result = self.llm_cleaner.clean_document(processed_text)
+                            cleaned_result = self.llm_cleaner.clean_document(processed_text, web_id=int(doc_row.get('web_id', 0)))
                             usefulness = cleaned_result.get('usefulness_score', 1.0)
                             is_useful = cleaned_result.get('is_useful', True)
                             
