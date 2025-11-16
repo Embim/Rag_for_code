@@ -64,6 +64,7 @@ class StreamingDocumentProcessor:
 
         # LLM cleaner (загружаем только если нужен)
         self.llm_cleaner = None
+        self.llm_clean_failed = False  # флаг что LLM очистка запрошена, но не загрузилась
         if llm_clean:
             try:
                 from src.llm_preprocessing import LLMDocumentCleaner
@@ -73,7 +74,8 @@ class StreamingDocumentProcessor:
             except Exception as e:
                 self.logger.warning(f"Не удалось загрузить LLM cleaner: {e}")
                 self.logger.warning("Продолжаем без LLM очистки")
-                self.llm_clean = False
+                self.llm_clean_failed = True
+                # НЕ меняем self.llm_clean на False, чтобы показать правильное сообщение
 
     def process_document(self, doc_row: pd.Series) -> List[Dict]:
         """
@@ -172,10 +174,20 @@ class StreamingDocumentProcessor:
         self.logger.info("ПОТОКОВАЯ ОБРАБОТКА ДОКУМЕНТОВ")
         self.logger.info("="*80)
         self.logger.info(f"Режим: Weaviate (streaming index)")
-        self.logger.info(f"LLM очистка: {'ВКЛ' if self.llm_clean else 'ВЫКЛ'}")
+        self.logger.info(f"LLM очистка: {'ВКЛ' if self.llm_clean and not self.llm_clean_failed else 'ВЫКЛ'}")
         if self.llm_clean:
-            self.logger.info(f"Порог полезности: {self.min_usefulness}")
-            if self.llm_cleaner:
+            if self.llm_clean_failed:
+                # LLM очистка запрошена, но модель не загрузилась
+                from src.config import MODELS_DIR, LLM_MODEL_FILE
+                model_path = MODELS_DIR / LLM_MODEL_FILE
+                self.logger.warning(f"⚠ LLM очистка запрошена, но модель не найдена!")
+                self.logger.warning(f"   Ожидаемый путь: {model_path}")
+                self.logger.warning(f"   Логи не будут писаться. Скачайте модель: python scripts/download_models.py")
+                print(f"  ⚠ LLM очистка запрошена, но модель не найдена!")
+                print(f"     Ожидаемый путь: {model_path}")
+                print(f"     Логи не будут писаться. Скачайте модель: python scripts/download_models.py")
+            elif self.llm_cleaner:
+                self.logger.info(f"Порог полезности: {self.min_usefulness}")
                 self.logger.info(f"✓ LLM Document Cleaner готов (логи: outputs/llm_cleaning.log)")
                 print(f"  ✓ LLM Document Cleaner готов (логи: outputs/llm_cleaning.log)")
             else:

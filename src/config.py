@@ -130,7 +130,8 @@ CROSS_ENCODER_MODEL = "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"  # multilingu
 # Варианты:
 # LLM_MODEL_FILE = "Qwen3-4B-Instruct-2507-UD-Q4_K_XL.gguf"  # 4B baseline (VRAM: 2-3 GB, качество среднее)
 # LLM_MODEL_FILE = "Qwen3-32B-2507-Q4_K_M.gguf"  # 32B 4-bit (VRAM: 16-18 GB, качество хорошее)
-LLM_MODEL_FILE = "Qwen3-32B-2507-Q8_0.gguf"  # 32B 8-bit -  (VRAM: 32-34 GB)
+# LLM_MODEL_FILE = "Qwen3-32B-2507-Q8_0.gguf"  # 32B 8-bit с датой (VRAM: 32-34 GB)
+LLM_MODEL_FILE = "Qwen3-32B-Q8_0.gguf"  # 32B 8-bit (VRAM: 32-34 GB) - фактическое имя файла в models/
 
 LLM_CONTEXT_SIZE = 8192  # Qwen3 поддерживает до 32k, но 8k достаточно
 LLM_TEMPERATURE = 0.1  # низкая температура для более детерминированных оценок
