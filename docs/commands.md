@@ -50,4 +50,17 @@ python scripts/run_grid_search.py --mode full  --sample 100
 python scripts/run_grid_search.py --mode quick --sample 30 --no-llm
 ```
 
+## Тестовый прогон на маленьком наборе данных
 
+Быстрый сценарий, чтобы проверить, что всё работает на небольшом объёме данных:
+
+```bash
+# 1) Перестроить базу знаний только по небольшой выборке документов (если поддерживается флагом)
+python main_pipeline.py build --force --limit 100
+
+# 2) Запустить поиск ответов только по первым 20 вопросам
+python main_pipeline.py search --limit 20
+
+# 3) (опционально) полный мини-цикл "build + search" одной командой
+python main_pipeline.py all --llm-clean --limit 20
+```
