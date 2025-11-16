@@ -321,6 +321,19 @@ JSON:
                 raw_response, response_text = self._call_api(prompt)
                 raw_json_response = raw_response  # Сохраняем сырой ответ для логирования
                 
+                # Удаляем markdown код-блоки (```json ... ```)
+                # Модели часто возвращают JSON в markdown формате
+                # Стратегия: ищем содержимое между ```json и ```
+                json_block_match = re.search(r'```(?:json)?\s*\n(.*?)\n```', response_text, re.DOTALL)
+                if json_block_match:
+                    # Извлекаем содержимое из markdown блока
+                    response_text = json_block_match.group(1).strip()
+                elif response_text.strip().startswith('```'):
+                    # Fallback: если формат немного другой, просто удаляем маркеры
+                    response_text = re.sub(r'^```(?:json)?\s*\n?', '', response_text, flags=re.MULTILINE)
+                    response_text = re.sub(r'\n?```\s*$', '', response_text, flags=re.MULTILINE)
+                    response_text = response_text.strip()
+                
                 # Парсинг JSON (улучшенная логика с обработкой reasoning)
                 raw_result = None
                 
