@@ -88,6 +88,14 @@ class HybridRAGEvaluator:
             use_api = (LLM_MODE == "api")
         
         self.use_api = use_api
+        
+        # Логируем режим работы
+        self.logger.info(f"[HybridRAGEvaluator] Режим работы: {'API' if use_api else 'ЛОКАЛЬНЫЙ'}")
+        if use_api:
+            self.logger.info(f"[HybridRAGEvaluator] API модель: {LLM_API_MODEL}")
+        else:
+            self.logger.info(f"[HybridRAGEvaluator] Локальная модель: {LLM_MODEL_FILE}")
+        
         self.use_llm = use_llm and (LLAMA_CPP_AVAILABLE or use_api)
         self.semantic_weight = semantic_weight
         self.llm_weight = llm_weight
@@ -243,6 +251,11 @@ class HybridRAGEvaluator:
         try:
             if self.use_api:
                 # API режим
+                if self.client is None:
+                    self.logger.error("[HybridRAGEvaluator] ❌ API клиент не инициализирован, но use_api=True!")
+                    raise RuntimeError("API клиент не инициализирован")
+                
+                self.logger.debug(f"[HybridRAGEvaluator] → API запрос к {self.model_name}")
                 request_params = {
                     "model": self.model_name,
                     "messages": [{"role": "user", "content": prompt}],
@@ -256,14 +269,21 @@ class HybridRAGEvaluator:
                 
                 response = self.client.chat.completions.create(**request_params)
                 content = response.choices[0].message.content
+                self.logger.debug(f"[HybridRAGEvaluator] ← API ответ получен")
             else:
                 # Локальный режим
+                if self.llm is None:
+                    self.logger.error("[HybridRAGEvaluator] ❌ Локальная модель не загружена, но use_api=False!")
+                    raise RuntimeError("Локальная модель не загружена")
+                
+                self.logger.debug(f"[HybridRAGEvaluator] → Локальный LLM запрос")
                 response = self.llm.create_chat_completion(
                     messages=[{"role": "user", "content": prompt}],
                     temperature=0.1,
                     max_tokens=1024
                 )
                 content = response['choices'][0]['message']['content']
+                self.logger.debug(f"[HybridRAGEvaluator] ← Локальный LLM ответ получен")
 
             # Парсим JSON
             metrics = self._parse_llm_response(content, len(chunks))
@@ -450,7 +470,20 @@ def get_hybrid_evaluator(
         HybridRAGEvaluator instance
     """
     global _evaluator_instance
-
+    
+    # Определяем режим работы если не передан явно
+    if use_api is None:
+        from src.config import LLM_MODE
+        use_api = (LLM_MODE == "api")
+    
+    # Если singleton уже создан, проверяем совместимость режима
+    if _evaluator_instance is not None:
+        # Если режим изменился (API <-> локальный), пересоздаем
+        if _evaluator_instance.use_api != use_api:
+            get_logger(__name__).info(f"Режим изменился ({_evaluator_instance.use_api} -> {use_api}), пересоздаем evaluator")
+            _evaluator_instance = None
+    
+    # Создаем новый экземпляр если нужно
     if _evaluator_instance is None:
         _evaluator_instance = HybridRAGEvaluator(
             llm_model_path,
