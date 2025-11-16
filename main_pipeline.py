@@ -408,8 +408,42 @@ def cmd_all(args):
             min_usefulness=getattr(args, 'min_usefulness', 0.3)
         )
 
-    # 2. Обработка вопросов
-    logger.info("[2/2] Обработка вопросов...")
+    # 2. Оптимизация параметров (опционально)
+    if getattr(args, 'optimize', False):
+        logger.info("="*80)
+        logger.info("GRID SEARCH ОПТИМИЗАЦИЯ ПАРАМЕТРОВ")
+        logger.info("="*80)
+
+        # Загружаем вопросы для оптимизации
+        optimize_questions_df = load_and_preprocess_questions(
+            str(QUESTIONS_CSV),
+            apply_lemmatization=False
+        )
+
+        # Создаем временный retriever для оптимизации
+        from src.retrieval import HybridRetriever
+        temp_retriever = HybridRetriever(embedding_indexer, bm25_indexer)
+
+        # Запускаем grid search (используем дефолты из config если не указано)
+        try:
+            with log_timing(logger, "Grid Search"):
+                best_params = optimize_rag_params(
+                    retriever=temp_retriever,
+                    questions_df=optimize_questions_df,
+                    mode=getattr(args, 'optimize_mode', None),        # None = из config.GRID_SEARCH_MODE
+                    sample_size=getattr(args, 'optimize_sample', None), # None = из config.GRID_SEARCH_SAMPLE_SIZE
+                    use_llm_eval=None               # None = из config.GRID_SEARCH_USE_LLM
+                )
+            logger.info("✅ Параметры оптимизированы! Продолжаем с лучшими параметрами...")
+        except Exception as e:
+            logger.warning(f"⚠️ Ошибка при оптимизации: {e}")
+            logger.info("Продолжаем с параметрами по умолчанию...")
+
+    # 3. Обработка вопросов
+    if getattr(args, 'optimize', False):
+        logger.info("[3/3] Обработка вопросов...")
+    else:
+        logger.info("[2/2] Обработка вопросов...")
 
     if args.limit:
         logger.info(f"Обработка первых {args.limit} вопросов (режим тестирования)")
@@ -430,7 +464,7 @@ def cmd_all(args):
             except Exception:
                 pass
 
-    # 3. Сохранение результатов
+    # 4. Сохранение результатов
     output_path = OUTPUTS_DIR / "submission.csv"
     results_df.to_csv(output_path, index=False)
 
@@ -439,6 +473,124 @@ def cmd_all(args):
     logger.info("="*80)
     logger.info(f"Результаты: {output_path}")
     logger.info(f"Обработано вопросов: {len(results_df)}")
+
+
+def cmd_check_env(args):
+    """Команда: проверка переменных окружения"""
+    import os
+    logger = get_logger(__name__)
+    
+    logger.info("="*80)
+    logger.info("ПРОВЕРКА ПЕРЕМЕННЫХ ОКРУЖЕНИЯ И КОНФИГУРАЦИИ")
+    logger.info("="*80)
+    
+    # Импортируем config для получения актуальных значений
+    from src import config
+    
+    def check_env_var(name, value, required=False, sensitive=False):
+        """Проверка одной переменной окружения"""
+        has_value = bool(value and str(value).strip())
+        status = "✅" if (has_value if required else True) else "❌"
+        
+        if sensitive and has_value:
+            # Маскируем чувствительные данные (первые 8 и последние 4 символа)
+            value_str = str(value)
+            if len(value_str) > 12:
+                masked = value_str[:8] + "..." + value_str[-4:]
+            else:
+                masked = "***"
+            display_value = masked
+        else:
+            display_value = value if has_value else "(не установлено)"
+        
+        logger.info(f"{status} {name:30s} = {display_value}")
+        if required and not has_value:
+            logger.warning(f"   ⚠️  ВНИМАНИЕ: {name} обязательна для работы!")
+    
+    logger.info("\n📋 ОСНОВНЫЕ ПЕРЕМЕННЫЕ ОКРУЖЕНИЯ:\n")
+    
+    # LLM режим
+    logger.info("🤖 LLM НАСТРОЙКИ:")
+    check_env_var("LLM_MODE", config.LLM_MODE)
+    check_env_var("LLM_API_MODEL", config.LLM_API_MODEL)
+    check_env_var("LLM_API_ROUTING", config.LLM_API_ROUTING if config.LLM_API_ROUTING else "(не установлено)")
+    check_env_var("OPENROUTER_API_KEY", config.OPENROUTER_API_KEY, required=(config.LLM_MODE == "API"), sensitive=True)
+    logger.info(f"   LLM_API_MAX_WORKERS = {config.LLM_API_MAX_WORKERS}")
+    logger.info(f"   LLM_API_TIMEOUT = {config.LLM_API_TIMEOUT}s")
+    logger.info(f"   LLM_API_RETRIES = {config.LLM_API_RETRIES}")
+    
+    # Grid Search
+    logger.info("\n🔍 GRID SEARCH НАСТРОЙКИ:")
+    logger.info(f"   GRID_SEARCH_MODE = {config.GRID_SEARCH_MODE}")
+    logger.info(f"   GRID_SEARCH_SAMPLE_SIZE = {config.GRID_SEARCH_SAMPLE_SIZE}")
+    logger.info(f"   GRID_SEARCH_USE_LLM = {config.GRID_SEARCH_USE_LLM}")
+    
+    # Weaviate
+    logger.info("\n💾 WEAVIATE НАСТРОЙКИ:")
+    logger.info(f"   USE_WEAVIATE = {config.USE_WEAVIATE}")
+    logger.info(f"   WEAVIATE_URL = {config.WEAVIATE_URL}")
+    
+    # Обработка
+    logger.info("\n⚙️  ПАРАМЕТРЫ ОБРАБОТКИ:")
+    logger.info(f"   CSV_CHUNKSIZE = {config.CSV_CHUNKSIZE}")
+    logger.info(f"   LLM_PARALLEL_WORKERS = {config.LLM_PARALLEL_WORKERS}")
+    logger.info(f"   FORCE_CPU = {os.environ.get('FORCE_CPU', 'false')}")
+    
+    # Функциональные флаги
+    logger.info("\n🎛️  ФУНКЦИОНАЛЬНЫЕ ФЛАГИ:")
+    logger.info(f"   ENABLE_QUERY_EXPANSION = {config.ENABLE_QUERY_EXPANSION}")
+    logger.info(f"   ENABLE_RRF = {config.ENABLE_RRF}")
+    logger.info(f"   ENABLE_CONTEXT_WINDOW = {config.ENABLE_CONTEXT_WINDOW}")
+    logger.info(f"   ENABLE_METADATA_FILTER = {config.ENABLE_METADATA_FILTER}")
+    logger.info(f"   ENABLE_USEFULNESS_FILTER = {config.ENABLE_USEFULNESS_FILTER}")
+    logger.info(f"   ENABLE_DYNAMIC_TOP_K = {config.ENABLE_DYNAMIC_TOP_K}")
+    logger.info(f"   RERANKER_TYPE = {config.RERANKER_TYPE}")
+    
+    # Логирование
+    logger.info("\n📝 ЛОГИРОВАНИЕ:")
+    logger.info(f"   LOG_LEVEL = {config.LOG_LEVEL}")
+    logger.info(f"   LOG_FILE = {config.LOG_FILE}")
+    
+    # Проверка критических настроек
+    logger.info("\n" + "="*80)
+    logger.info("ПРОВЕРКА КРИТИЧЕСКИХ НАСТРОЕК:")
+    logger.info("="*80)
+    
+    issues = []
+    if config.LLM_MODE == "API" and not config.OPENROUTER_API_KEY:
+        issues.append("❌ OPENROUTER_API_KEY не установлен (обязателен для API режима)")
+    
+    if config.USE_WEAVIATE:
+        try:
+            import weaviate
+            client = weaviate.Client(url=config.WEAVIATE_URL)
+            client.schema.get()
+            logger.info("✅ Weaviate доступен и отвечает")
+        except Exception as e:
+            issues.append(f"❌ Weaviate недоступен: {e}")
+            logger.info("   💡 Запустите: docker-compose up -d")
+    
+    if config.LLM_MODE == "local":
+        model_path = config.MODELS_DIR / config.LLM_MODEL_FILE
+        if model_path.exists():
+            logger.info(f"✅ Локальная LLM модель найдена: {config.LLM_MODEL_FILE}")
+        else:
+            issues.append(f"❌ Локальная LLM модель не найдена: {model_path}")
+            logger.info("   💡 Скачайте модель: python scripts/download_models.py")
+    
+    if issues:
+        logger.warning("\n⚠️  ОБНАРУЖЕНЫ ПРОБЛЕМЫ:")
+        for issue in issues:
+            logger.warning(f"   {issue}")
+    else:
+        logger.info("\n✅ Все критические настройки в порядке!")
+    
+    logger.info("\n" + "="*80)
+    logger.info("💡 ПОДСКАЗКА: Установите переменные окружения перед запуском:")
+    logger.info("   export LLM_MODE=api")
+    logger.info("   export OPENROUTER_API_KEY=sk-or-v1-...")
+    logger.info("   export LLM_API_MODEL=tngtech/deepseek-r1t2-chimera:free")
+    logger.info("="*80)
 
 
 def cmd_evaluate(args):
@@ -496,10 +648,15 @@ SEARCH (поиск ответов):
 
 ALL (полный цикл):
   python main_pipeline.py all                             # Build + Search
-  python main_pipeline.py all --llm-clean --optimize      # С LLM очисткой и оптимизацией
+  python main_pipeline.py all --llm-clean                 # С LLM очисткой
+  python main_pipeline.py all --llm-clean --optimize --optimize-mode test  # С LLM очисткой и оптимизацией (test)
+  python main_pipeline.py all --llm-clean --optimize --optimize-mode quick  # С LLM очисткой и оптимизацией (quick)
 
 EVALUATE:
   python main_pipeline.py evaluate                        # Оценка на примерах
+
+CHECK-ENV (проверка конфигурации):
+  python main_pipeline.py check-env                      # Проверить все переменные окружения
         """
     )
 
@@ -584,6 +741,24 @@ EVALUATE:
         type=int,
         help='Обработать только первые N вопросов (для тестирования)'
     )
+    parser_all.add_argument(
+        '--optimize',
+        action='store_true',
+        help='Запустить grid search для оптимизации параметров перед поиском'
+    )
+    parser_all.add_argument(
+        '--optimize-sample',
+        type=int,
+        default=None,
+        help='Размер выборки для grid search (по умолчанию из config.GRID_SEARCH_SAMPLE_SIZE)'
+    )
+    parser_all.add_argument(
+        '--optimize-mode',
+        type=str,
+        default=None,
+        choices=['test', 'quick', 'full'],
+        help='Режим grid search: test (5 комбинаций), quick (54 комбинации) или full (1225 комбинаций) (по умолчанию из config.GRID_SEARCH_MODE)'
+    )
     parser_all.set_defaults(func=cmd_all)
 
     # Команда: evaluate
@@ -592,6 +767,13 @@ EVALUATE:
         help='Оценка качества на эталонных примерах'
     )
     parser_eval.set_defaults(func=cmd_evaluate)
+
+    # Команда: check-env
+    parser_check = subparsers.add_parser(
+        'check-env',
+        help='Проверить основные переменные окружения и конфигурацию'
+    )
+    parser_check.set_defaults(func=cmd_check_env)
 
     # Парсинг аргументов
     args = parser.parse_args()
