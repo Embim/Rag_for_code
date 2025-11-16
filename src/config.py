@@ -85,16 +85,20 @@ RRF_K = 60  # константа для RRF (обычно 60, можно 20-100)
 
 # Параметры Context Window
 ENABLE_CONTEXT_WINDOW = os.environ.get("ENABLE_CONTEXT_WINDOW", "true").lower() == "true"  # ✅ ВКЛЮЧЕНО
-CONTEXT_WINDOW_SIZE = 1  # ±1 чанк (можно 2-3 для большего контекста)
-CONTEXT_MERGE_MODE = "separate"  # "separate" или "merged" (объединять тексты или нет)
+CONTEXT_WINDOW_SIZE = 3  # ±1 чанк (можно 2-3 для большего контекста)
+CONTEXT_MERGE_MODE = "merged"  # "separate" или "merged" (объединять тексты или нет)
 
 # Параметры Multi-hop Reasoning
-ENABLE_MULTI_HOP = os.environ.get("ENABLE_MULTI_HOP", "false").lower() == "true"  # ⚠️ ВЫКЛЮЧЕНО (медленно)
+# Глобальный переключатель продвинутых функций (простая и понятная явная настройка)
+ENABLE_ADVANCED_FEATURES = True
+
+# Явные флаги (по умолчанию включены для простоты)
+ENABLE_MULTI_HOP = True
 MAX_HOPS = 3  # максимальное количество итераций (обычно 2-3)
 
 # Параметры Query Reformulation
-ENABLE_QUERY_REFORMULATION = os.environ.get("ENABLE_QUERY_REFORMULATION", "false").lower() == "true"  # ⚠️ ВЫКЛЮЧЕНО
-QUERY_REFORMULATION_METHOD = "simple"  # "simple", "expanded", "multi", "all"
+ENABLE_QUERY_REFORMULATION = True
+QUERY_REFORMULATION_METHOD = "all"  # "simple", "expanded", "multi", "all"
 QUERY_REFORMULATION_CACHE = True  # кэширование переформулированных запросов
 
 # Параметры Reranker
