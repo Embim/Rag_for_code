@@ -57,14 +57,34 @@ class GridSearchOptimizer:
                 # Определяем режим работы (API или локальный)
                 use_api = (LLM_MODE == "api")
                 
+                # Логируем для отладки
+                logger = get_logger(__name__)
+                logger.info(f"[GridSearch] LLM_MODE из config: {LLM_MODE}")
+                logger.info(f"[GridSearch] use_api будет: {use_api}")
+                
+                # Принудительно сбрасываем singleton если режим изменился
+                # (на случай если он был создан ранее с другим режимом)
+                import src.llm_evaluator as llm_eval_module
+                if hasattr(llm_eval_module, '_evaluator_instance') and llm_eval_module._evaluator_instance is not None:
+                    existing_use_api = llm_eval_module._evaluator_instance.use_api
+                    if existing_use_api != use_api:
+                        logger.info(f"[GridSearch] Сбрасываем singleton evaluator (был {existing_use_api}, нужен {use_api})")
+                        llm_eval_module._evaluator_instance = None
+                
                 self.evaluator = get_hybrid_evaluator(
                     use_llm=True,
                     semantic_weight=0.3,  # 30% косинусное расстояние
                     llm_weight=0.7,       # 70% LLM метрики
                     use_api=use_api
                 )
+                
+                # Проверяем что evaluator действительно в нужном режиме
+                actual_mode = "API" if self.evaluator.use_api else "локальный"
                 mode_str = "API" if use_api else "локальный"
-                get_logger(__name__).info(f"✓ Hybrid Evaluator загружен ({mode_str} режим, cosine 30% + LLM 70%)")
+                logger.info(f"[GridSearch] ✓ Hybrid Evaluator загружен (запрошен: {mode_str}, фактический: {actual_mode}, cosine 30% + LLM 70%)")
+                
+                if self.evaluator.use_api != use_api:
+                    logger.error(f"[GridSearch] ❌ ОШИБКА: evaluator в неправильном режиме! Запрошен: {use_api}, фактический: {self.evaluator.use_api}")
             except Exception as e:
                 get_logger(__name__).warning(f"Не удалось загрузить LLM Evaluator: {e}")
                 get_logger(__name__).warning("Используется только косинусное расстояние")

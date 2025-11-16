@@ -475,12 +475,15 @@ def get_hybrid_evaluator(
     if use_api is None:
         from src.config import LLM_MODE
         use_api = (LLM_MODE == "api")
+        logger = get_logger(__name__)
+        logger.info(f"[get_hybrid_evaluator] LLM_MODE={LLM_MODE}, use_api={use_api}")
     
     # Если singleton уже создан, проверяем совместимость режима
     if _evaluator_instance is not None:
         # Если режим изменился (API <-> локальный), пересоздаем
         if _evaluator_instance.use_api != use_api:
-            get_logger(__name__).info(f"Режим изменился ({_evaluator_instance.use_api} -> {use_api}), пересоздаем evaluator")
+            logger = get_logger(__name__)
+            logger.warning(f"[get_hybrid_evaluator] ⚠️ Режим изменился ({_evaluator_instance.use_api} -> {use_api}), пересоздаем evaluator")
             _evaluator_instance = None
     
     # Создаем новый экземпляр если нужно

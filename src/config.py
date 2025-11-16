@@ -131,7 +131,8 @@ CROSS_ENCODER_MODEL = "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"  # multilingu
 
 # Параметры LLM (используется И для предочистки И для reranking)
 # ВЫБОР РЕЖИМА: локальная модель или API
-LLM_MODE = os.environ.get("LLM_MODE", "local")  # "local" или "api" (openai/yandex/gigachat)
+LLM_MODE = os.environ.get("LLM_MODE", "API")  # "local" или "api"
+# ВАЖНО: для использования API установите: export LLM_MODE=api
 
 # === ЛОКАЛЬНАЯ МОДЕЛЬ (llama-cpp) ===
 # ЕДИНАЯ МОДЕЛЬ: Qwen3-32B для всех задач
