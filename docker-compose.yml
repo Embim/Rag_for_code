@@ -1,0 +1,52 @@
+services:
+  weaviate:
+    image: cr.weaviate.io/semitechnologies/weaviate:1.27.5
+    container_name: alfabank-weaviate
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+      - "50051:50051"
+    volumes:
+      - weaviate_data:/var/lib/weaviate
+    environment:
+      # Базовые настройки
+      QUERY_DEFAULTS_LIMIT: 25
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: 'true'
+      PERSISTENCE_DATA_PATH: '/var/lib/weaviate'
+
+      # Отключаем встроенные модули векторизации (мы передаем собственные эмбеддинги)
+      DEFAULT_VECTORIZER_MODULE: 'none'
+      ENABLE_MODULES: ''
+
+      # A100 80GB оптимизация - максимальная производительность
+      ASYNC_INDEXING: 'true'
+      LIMIT_RESOURCES: 'false'  # Не ограничиваем ресурсы
+      GOMEMLIMIT: '60GiB'  # Максимум памяти (оставляем 20GB системе)
+
+      # Отключаем телеметрию
+      DISABLE_TELEMETRY: 'true'
+
+      # Настройки кластера (для single-node)
+      CLUSTER_HOSTNAME: 'node1'
+
+      # Логирование
+      LOG_LEVEL: 'info'
+
+    # Ограничения ресурсов для A100 сервера
+    deploy:
+      resources:
+        limits:
+          memory: 64G  # Выделяем 64GB RAM для Weaviate
+        reservations:
+          memory: 32G  # Резервируем минимум 32GB
+
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/v1/.well-known/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  weaviate_data:
+    driver: local

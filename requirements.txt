@@ -1,0 +1,36 @@
+# Core libraries
+pandas>=2.0.0
+numpy>=1.24.0
+
+# NLP and preprocessing
+natasha>=1.6.0
+pymorphy2>=0.9.1
+razdel>=0.5.0
+
+# Embeddings and vector search
+sentence-transformers>=2.2.0
+faiss-cpu>=1.7.4
+torch>=2.0.0
+weaviate-client>=4.6.0
+
+# BM25 search
+rank-bm25>=0.2.2
+
+# Cross-encoder for reranking
+transformers>=4.30.0
+
+# LLM as Judge (для GGUF моделей)
+llama-cpp-python>=0.2.0
+# Для установки с GPU поддержкой (CUDA):
+CMAKE_ARGS="-DLLAMA_CUBLAS=on" pip install llama-cpp-python --force-reinstall --no-cache-dir
+# Для MacOS с Metal:
+# CMAKE_ARGS="-DLLAMA_METAL=on" pip install llama-cpp-python --force-reinstall --no-cache-dir
+
+# Utilities
+tqdm>=4.65.0
+scikit-learn>=1.3.0
+huggingface-hub>=0.20.0  # для скачивания моделей
+
+# Optional: for better text cleaning
+beautifulsoup4>=4.12.0
+lxml>=4.9.0
