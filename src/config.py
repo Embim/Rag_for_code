@@ -126,17 +126,19 @@ CROSS_ENCODER_MODEL = "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"  # multilingu
 
 # Параметры LLM (используется И для предочистки И для reranking)
 # ЕДИНАЯ МОДЕЛЬ: Qwen3-32B для всех задач
-# A100 80GB оптимизация: используем 8-bit для максимального качества
+# A100 80GB оптимизация: используем IQ4_NL для баланса скорости и качества
 # Варианты:
 # LLM_MODEL_FILE = "Qwen3-4B-Instruct-2507-UD-Q4_K_XL.gguf"  # 4B baseline (VRAM: 2-3 GB, качество среднее)
 # LLM_MODEL_FILE = "Qwen3-32B-2507-Q4_K_M.gguf"  # 32B 4-bit (VRAM: 16-18 GB, качество хорошее)
-# LLM_MODEL_FILE = "Qwen3-32B-2507-Q8_0.gguf"  # 32B 8-bit с датой (VRAM: 32-34 GB)
-LLM_MODEL_FILE = "Qwen3-32B-Q8_0.gguf"  # 32B 8-bit (VRAM: 32-34 GB) - фактическое имя файла в models/
+# LLM_MODEL_FILE = "Qwen3-32B-Q8_0.gguf"  # 32B 8-bit (VRAM: 32-34 GB, медленно ~73 сек/док)
+LLM_MODEL_FILE = "Qwen3-32B-IQ4_NL.gguf"  # 32B IQ4_NL (VRAM: ~20 GB, быстро ~35-40 сек/док, хорошее качество)
 
-LLM_CONTEXT_SIZE = 8192  # Qwen3 поддерживает до 32k, но 8k достаточно
+LLM_CONTEXT_SIZE = 4096  # уменьшено для ускорения (было 8192, достаточно для большинства документов)
 LLM_TEMPERATURE = 0.1  # низкая температура для более детерминированных оценок
-LLM_MAX_TOKENS = 2048  # для предочистки нужно больше (было 512)
+LLM_MAX_TOKENS = 1024  # уменьшено для ускорения (было 2048, достаточно для JSON ответа)
 LLM_GPU_LAYERS = -1  # -1 = все слои на GPU, 0 = только CPU
+LLM_N_BATCH = 1024  # увеличен для ускорения (было 512, больше = быстрее на GPU)
+LLM_N_THREADS = 16  # увеличено для CPU части (было 8, больше потоков = быстрее)
 
 # Финальные результаты
 TOP_N_DOCUMENTS = 5  # количество документов в финальном ответе
