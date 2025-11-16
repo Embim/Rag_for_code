@@ -563,9 +563,22 @@ def cmd_check_env(args):
     if config.USE_WEAVIATE:
         try:
             import weaviate
-            client = weaviate.Client(url=config.WEAVIATE_URL)
-            client.schema.get()
+            # Используем v4 API
+            if config.WEAVIATE_URL == "http://localhost:8080":
+                client = weaviate.connect_to_local()
+            else:
+                # Для кастомного URL используем connect_to_custom
+                from urllib.parse import urlparse
+                parsed = urlparse(config.WEAVIATE_URL)
+                client = weaviate.connect_to_custom(
+                    http_host=parsed.hostname,
+                    http_port=parsed.port or 8080,
+                    http_secure=parsed.scheme == "https"
+                )
+            # Проверяем доступность через получение коллекций
+            client.collections.list_all()
             logger.info("✅ Weaviate доступен и отвечает")
+            client.close()
         except Exception as e:
             issues.append(f"❌ Weaviate недоступен: {e}")
             logger.info("   💡 Запустите: docker-compose up -d")
