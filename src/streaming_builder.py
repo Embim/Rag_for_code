@@ -175,6 +175,15 @@ class StreamingDocumentProcessor:
         self.logger.info(f"LLM очистка: {'ВКЛ' if self.llm_clean else 'ВЫКЛ'}")
         if self.llm_clean:
             self.logger.info(f"Порог полезности: {self.min_usefulness}")
+            if self.llm_cleaner:
+                self.logger.info(f"✓ LLM Document Cleaner готов (логи: outputs/llm_cleaning.log)")
+                print(f"  ✓ LLM Document Cleaner готов (логи: outputs/llm_cleaning.log)")
+            else:
+                self.logger.warning("⚠ LLM Document Cleaner не загружен - логи не будут писаться!")
+                print(f"  ⚠ LLM Document Cleaner не загружен - логи не будут писаться!")
+        else:
+            self.logger.info("ℹ LLM очистка выключена - файл llm_cleaning.log будет пустым")
+            print(f"  ℹ LLM очистка ВЫКЛЮЧЕНА (запустите с --llm-clean для логирования)")
         self.logger.info(f"Размер батча чанков: {self.chunk_batch_size}")
         self.logger.info(f"Размер чанка CSV: {self.csv_chunksize} документов")
         self.logger.info("="*80)
