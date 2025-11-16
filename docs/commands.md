@@ -38,9 +38,6 @@ export LLM_API_MODEL=meta-llama/llama-3.2-3b-instruct:free
 export LLM_API_MODEL=google/gemma-2-2b-it:free
 export LLM_API_MODEL=openrouter/sherlock-think-alpha  # бесплатно, 1.8M контекст, reasoning модель
 
-# Платные, но быстрые
-export LLM_API_MODEL=openai/gpt-4o-mini
-export LLM_API_MODEL=anthropic/claude-3-haiku
 ```
 Полный каталог: https://openrouter.ai/models
 
@@ -53,6 +50,8 @@ export LLM_API_MAX_WORKERS=10
 
 python main_pipeline.py build --force --llm-clean
 ```
+
+python main_pipeline.py build --force --llm-clean
 
 ## Build базы знаний
 ```bash
@@ -82,6 +81,7 @@ python main_pipeline.py build --force --llm-clean --min-usefulness 0.5  # бол
 Переменные окружения (см. `src/config.py`):
 - `LLM_MODE=local|api` — режим работы LLM (local = локальная модель, api = OpenRouter API).
 - `LLM_API_MODEL` — модель для API (по умолчанию: `tngtech/deepseek-r1t2-chimera:free`).
+- `LLM_API_ROUTING` — провайдер для роутинга (опционально, например: "grok", "openai", "anthropic").
 - `OPENROUTER_API_KEY` — API ключ OpenRouter (ОБЯЗАТЕЛЕН, получите бесплатный на https://openrouter.ai/keys).
 - `LLM_API_MAX_WORKERS` — количество параллельных запросов к API (по умолчанию: 10).
 - `USE_WEAVIATE=true` — включен по умолчанию.

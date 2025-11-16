@@ -154,10 +154,12 @@ LLM_N_THREADS = 16  # увеличено для CPU части (было 8, бо
 # Поддерживает OpenAI, Anthropic, Google, Meta и многие другие модели
 LLM_API_PROVIDER = "openrouter"  # только OpenRouter
 LLM_API_MODEL = os.environ.get("LLM_API_MODEL", "tngtech/deepseek-r1t2-chimera:free")  # бесплатная модель по умолчанию
+LLM_API_ROUTING = os.environ.get("LLM_API_ROUTING", "")  # провайдер для роутинга (например: "grok", "openai", "anthropic")
 # Другие модели OpenRouter: https://openrouter.ai/models
 # Примеры:
 #   "tngtech/deepseek-r1t2-chimera:free" - бесплатно, быстро
 #   "openrouter/sherlock-think-alpha" - бесплатно, reasoning модель, 1.8M контекст
+#   "openai/gpt-oss-20b" - платно ($0.03/M input, $0.14/M output), 21B параметров, MoE
 #   "openai/gpt-4o-mini" - платно, быстро
 #   "anthropic/claude-3-haiku" - платно, качественно
 #   "meta-llama/llama-3.2-3b-instruct:free" - бесплатно, маленькая модель

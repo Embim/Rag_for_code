@@ -44,6 +44,7 @@ from src.config import (
     LLM_GPU_LAYERS,
     LLM_MODE,
     LLM_API_MODEL,
+    LLM_API_ROUTING,
     OPENROUTER_API_KEY,
     MODELS_DIR
 )
@@ -115,6 +116,10 @@ class HybridRAGEvaluator:
                             "HTTP-Referer": "https://github.com/your-repo",
                             "X-Title": "AlfaBank RAG Pipeline"
                         }
+                        
+                        # Добавляем провайдера для роутинга (если указан)
+                        if LLM_API_ROUTING:
+                            default_headers["X-OpenRouter-Provider"] = LLM_API_ROUTING
                         
                         self.client = OpenAI(
                             base_url=base_url,
@@ -238,12 +243,18 @@ class HybridRAGEvaluator:
         try:
             if self.use_api:
                 # API режим
-                response = self.client.chat.completions.create(
-                    model=self.model_name,
-                    messages=[{"role": "user", "content": prompt}],
-                    temperature=0.1,
-                    max_tokens=1024
-                )
+                request_params = {
+                    "model": self.model_name,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0.1,
+                    "max_tokens": 1024
+                }
+                
+                # Добавляем провайдера через extra_headers если указан
+                if LLM_API_ROUTING:
+                    request_params["extra_headers"] = {"X-OpenRouter-Provider": LLM_API_ROUTING}
+                
+                response = self.client.chat.completions.create(**request_params)
                 content = response.choices[0].message.content
             else:
                 # Локальный режим

@@ -508,6 +508,10 @@ class LLMReranker:
                     "X-Title": "AlfaBank RAG Pipeline"
                 }
                 
+                # Добавляем провайдера для роутинга (если указан)
+                if LLM_API_ROUTING:
+                    default_headers["X-OpenRouter-Provider"] = LLM_API_ROUTING
+                
                 self.client = OpenAI(
                     base_url=base_url,
                     api_key=OPENROUTER_API_KEY,
@@ -600,12 +604,18 @@ class LLMReranker:
             try:
                 if self.use_api:
                     # API режим
-                    response = self.client.chat.completions.create(
-                        model=self.model_name,
-                        messages=[{"role": "user", "content": prompt}],
-                        temperature=LLM_TEMPERATURE,
-                        max_tokens=10,  # Нужно только число
-                    )
+                    request_params = {
+                        "model": self.model_name,
+                        "messages": [{"role": "user", "content": prompt}],
+                        "temperature": LLM_TEMPERATURE,
+                        "max_tokens": 10,  # Нужно только число
+                    }
+                    
+                    # Добавляем провайдера через extra_headers если указан
+                    if LLM_API_ROUTING:
+                        request_params["extra_headers"] = {"X-OpenRouter-Provider": LLM_API_ROUTING}
+                    
+                    response = self.client.chat.completions.create(**request_params)
                     score_text = response.choices[0].message.content.strip()
                 else:
                     # Локальный режим

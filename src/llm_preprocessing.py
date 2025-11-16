@@ -20,6 +20,8 @@ from pathlib import Path
 from typing import Dict, Optional
 import logging
 from logging.handlers import RotatingFileHandler
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
 
 from src.config import (
     LLM_MODEL_FILE,
@@ -33,6 +35,8 @@ from src.config import (
     LLM_API_MAX_WORKERS,
     LLM_API_TIMEOUT,
     LLM_API_RETRIES,
+    LLM_API_ROUTING,
+    LLM_PARALLEL_WORKERS,
     OPENROUTER_API_KEY,
     MODELS_DIR,
     OUTPUTS_DIR,
@@ -114,6 +118,10 @@ class LLMDocumentCleanerAPI:
                 "X-Title": "AlfaBank RAG Pipeline"
             }
             
+            # Добавляем провайдера для роутинга (если указан)
+            if LLM_API_ROUTING:
+                default_headers["X-OpenRouter-Provider"] = LLM_API_ROUTING
+            
             self.client = OpenAI(
                 base_url=base_url,
                 api_key=OPENROUTER_API_KEY,
@@ -145,12 +153,19 @@ class LLMDocumentCleanerAPI:
     def _call_api(self, prompt: str) -> str:
         """Вызов OpenRouter API"""
         # OpenRouter использует OpenAI-совместимый API
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.1,
-            max_tokens=LLM_MAX_TOKENS,
-        )
+        # Подготавливаем параметры запроса
+        request_params = {
+            "model": self.model,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.1,
+            "max_tokens": LLM_MAX_TOKENS,
+        }
+        
+        # Добавляем провайдера через extra_headers если указан
+        if LLM_API_ROUTING:
+            request_params["extra_headers"] = {"X-OpenRouter-Provider": LLM_API_ROUTING}
+        
+        response = self.client.chat.completions.create(**request_params)
         return response.choices[0].message.content
     
     def _preprocess_text_before_llm(self, text: str) -> str:
@@ -313,11 +328,12 @@ class LLMDocumentCleaner:
     - Добавления метаданных для улучшения поиска
     """
 
-    def __init__(self, model_path: Optional[str] = None, verbose: bool = True):
+    def __init__(self, model_path: Optional[str] = None, verbose: bool = True, n_workers: Optional[int] = None):
         """
         Args:
             model_path: путь к GGUF модели (если None - использует из config)
             verbose: выводить прогресс
+            n_workers: количество параллельных воркеров (если None - использует LLM_PARALLEL_WORKERS из config)
         """
         if model_path is None:
             model_path = str(MODELS_DIR / LLM_MODEL_FILE)
@@ -325,11 +341,15 @@ class LLMDocumentCleaner:
         self.model_path = model_path
         self.verbose = verbose
         self.llm = None
-        
+
+        # Количество параллельных воркеров
+        self.n_workers = n_workers if n_workers is not None else LLM_PARALLEL_WORKERS
+
         # Простой кэш для похожих документов (по хэшу текста)
         # Кэшируем только последние 100 результатов для экономии памяти
         self._cache = {}
         self._cache_max_size = 100
+        self._cache_lock = threading.Lock()  # Lock для thread-safe доступа к кэшу
 
         # Отдельный логгер для хранения результатов работы LLM
         # (чтобы можно было анализировать, что именно вернула модель)
@@ -340,6 +360,7 @@ class LLMDocumentCleaner:
             print(f"\n{'='*80}")
             print(f"📥 Инициализация LLM Document Cleaner")
             print(f"   Модель: {Path(model_path).name}")
+            print(f"   Параллельных воркеров: {self.n_workers}")
             print(f"{'='*80}\n")
 
     def _init_llm_logger(self):
@@ -504,12 +525,13 @@ class LLMDocumentCleaner:
             self._log_llm_result(fallback, original_text=text, reason="too_short_after_preprocessing")
             return fallback
         
-        # Проверяем кэш (по хэшу предобработанного текста)
+        # Проверяем кэш (по хэшу предобработанного текста) - thread-safe
         text_hash = hashlib.md5(text_preprocessed[:2000].encode('utf-8')).hexdigest()
-        if text_hash in self._cache:
-            cached_result = self._cache[text_hash].copy()
-            self._log_llm_result(cached_result, original_text=text, reason="cached")
-            return cached_result
+        with self._cache_lock:
+            if text_hash in self._cache:
+                cached_result = self._cache[text_hash].copy()
+                self._log_llm_result(cached_result, original_text=text, reason="cached")
+                return cached_result
         
         # Ограничиваем длину для контекста (уменьшено для ускорения)
         text_truncated = text_preprocessed[:2500]  # было 3000, уменьшено т.к. уже предобработано
@@ -604,12 +626,13 @@ JSON:
                 # derive is_useful по прежней логике (порог ~0.3)
                 raw_result["is_useful"] = bool(raw_result.get("usefulness_score", 0.5) >= 0.3)
 
-                # Сохраняем в кэш (ограничиваем размер)
-                if len(self._cache) >= self._cache_max_size:
-                    # Удаляем самый старый элемент (FIFO)
-                    oldest_key = next(iter(self._cache))
-                    del self._cache[oldest_key]
-                self._cache[text_hash] = raw_result.copy()
+                # Сохраняем в кэш (ограничиваем размер) - thread-safe
+                with self._cache_lock:
+                    if len(self._cache) >= self._cache_max_size:
+                        # Удаляем самый старый элемент (FIFO)
+                        oldest_key = next(iter(self._cache))
+                        del self._cache[oldest_key]
+                    self._cache[text_hash] = raw_result.copy()
 
                 # Логируем результат в отдельный лог-файл (без лишнего шума)
                 self._log_llm_result(raw_result, original_text=text_truncated)

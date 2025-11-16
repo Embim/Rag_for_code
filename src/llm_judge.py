@@ -47,6 +47,7 @@ from src.config import (
     LLM_GPU_LAYERS,
     LLM_MODE,
     LLM_API_MODEL,
+    LLM_API_ROUTING,
     OPENROUTER_API_KEY,
     MODELS_DIR
 )
@@ -162,6 +163,10 @@ class CoverageJudge:
                     "HTTP-Referer": "https://github.com/your-repo",
                     "X-Title": "AlfaBank RAG Pipeline"
                 }
+                
+                # Добавляем провайдера для роутинга (если указан)
+                if LLM_API_ROUTING:
+                    default_headers["X-OpenRouter-Provider"] = LLM_API_ROUTING
                 
                 self.client = OpenAI(
                     base_url=base_url,
