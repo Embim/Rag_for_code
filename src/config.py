@@ -17,7 +17,7 @@ LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
 LOG_FILE = OUTPUTS_DIR / os.environ.get("LOG_FILE", "pipeline.log")
 
 # Входные файлы
-WEBSITES_CSV = PROJECT_ROOT / "websites.csv"
+WEBSITES_CSV = PROJECT_ROOT / "websites_sample.csv"
 QUESTIONS_CSV = PROJECT_ROOT / "questions_clean.csv"
 EXAMPLES_CSV = PROJECT_ROOT / "examples_for_participants.csv"
 
