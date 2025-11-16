@@ -497,7 +497,7 @@ class LLMReranker:
             model_path: путь к GGUF модели (для локального режима)
             use_api: использовать ли API (если None - определяется из LLM_MODE)
         """
-        from src.config import LLM_MODE, LLM_API_MODEL, LLM_API_ROUTING, OPENROUTER_API_KEY
+        from src.config import LLM_MODE, LLM_API_MODEL, LLM_API_MAX_TOKENS, LLM_API_ROUTING, OPENROUTER_API_KEY
         
         # Определяем режим работы
         if use_api is None:
@@ -537,6 +537,7 @@ class LLMReranker:
                     default_headers=default_headers
                 )
                 self.model_name = LLM_API_MODEL
+                self.max_tokens = LLM_API_MAX_TOKENS
                 logging.getLogger(__name__).info(f"LLM Reranker (API) инициализирован")
             except ImportError:
                 raise ImportError("Установите openai: pip install openai")
@@ -626,7 +627,7 @@ class LLMReranker:
                         "model": self.model_name,
                         "messages": [{"role": "user", "content": prompt}],
                         "temperature": LLM_TEMPERATURE,
-                        "max_tokens": 10,  # Нужно только число
+                        "max_tokens": self.max_tokens,  # используем LLM_API_MAX_TOKENS (нужно для reasoning моделей)
                     }
                     
                     # Добавляем провайдера через extra_headers если указан

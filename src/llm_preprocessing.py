@@ -533,8 +533,8 @@ class LLMDocumentCleanerAPI:
             
             # Добавляем сырой JSON ответ от API (если доступен)
             if raw_json_response is not None:
-                # Ограничиваем длину сырого ответа (первые 2000 символов)
-                log_record["raw_json_response"] = raw_json_response[:2000]
+                # Ограничиваем длину сырого ответа (первые 5000 символов для отладки)
+                log_record["raw_json_response"] = raw_json_response[:5000]
             
             self.llm_logger.info(json.dumps(log_record, ensure_ascii=False))
             
@@ -941,8 +941,8 @@ JSON:
             
             # Добавляем сырой JSON ответ от API (если доступен)
             if raw_json_response is not None:
-                # Ограничиваем длину сырого ответа (первые 2000 символов)
-                log_record["raw_json_response"] = raw_json_response[:2000]
+                # Ограничиваем длину сырого ответа (первые 5000 символов для отладки)
+                log_record["raw_json_response"] = raw_json_response[:5000]
             self.llm_logger.info(json.dumps(log_record, ensure_ascii=False))
             
             # Принудительно сбрасываем буферы всех хендлеров

@@ -44,6 +44,7 @@ from src.config import (
     LLM_GPU_LAYERS,
     LLM_MODE,
     LLM_API_MODEL,
+    LLM_API_MAX_TOKENS,
     LLM_API_ROUTING,
     OPENROUTER_API_KEY,
     MODELS_DIR
@@ -260,7 +261,7 @@ class HybridRAGEvaluator:
                     "model": self.model_name,
                     "messages": [{"role": "user", "content": prompt}],
                     "temperature": 0.1,
-                    "max_tokens": 1024
+                    "max_tokens": LLM_API_MAX_TOKENS  # используем отдельный параметр для API
                 }
                 
                 # Добавляем провайдера через extra_headers если указан

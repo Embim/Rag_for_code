@@ -145,7 +145,7 @@ LLM_MODEL_FILE = "Qwen3-32B-IQ4_NL.gguf"  # 32B IQ4_NL (VRAM: ~20 GB, быстр
 
 LLM_CONTEXT_SIZE = 8192  # уменьшено для ускорения (было 8192, достаточно для большинства документов)
 LLM_TEMPERATURE = 0.1  # низкая температура для более детерминированных оценок
-LLM_MAX_TOKENS = 8192  # уменьшено для ускорения (было 2048, достаточно для JSON ответа)
+LLM_MAX_TOKENS = 1024  # уменьшено для ускорения (было 2048, достаточно для JSON ответа)
 LLM_GPU_LAYERS = -1  # -1 = все слои на GPU, 0 = только CPU
 LLM_N_BATCH = 1024  # увеличен для ускорения (было 512, больше = быстрее на GPU)
 LLM_N_THREADS = 16  # увеличено для CPU части (было 8, больше потоков = быстрее)
@@ -172,7 +172,7 @@ OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")  # получи б
 LLM_API_MAX_WORKERS = int(os.environ.get("LLM_API_MAX_WORKERS", "10"))  # количество параллельных запросов к API
 LLM_API_TIMEOUT = int(os.environ.get("LLM_API_TIMEOUT", "60"))  # таймаут запроса в секундах
 LLM_API_RETRIES = int(os.environ.get("LLM_API_RETRIES", "3"))  # количество повторных попыток при ошибке
-LLM_API_MAX_TOKENS = int(os.environ.get("LLM_API_MAX_TOKENS", "3072"))  # max токенов для API (больше чем для локальной модели, т.к. reasoning модели генерируют <think>...</think>)
+LLM_API_MAX_TOKENS = int(os.environ.get("LLM_API_MAX_TOKENS", "32768"))  # max токенов для API (больше чем для локальной модели, т.к. reasoning модели генерируют <think>...</think>)
 
 # Финальные результаты
 TOP_N_DOCUMENTS = 5  # количество документов в финальном ответе

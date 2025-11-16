@@ -47,6 +47,7 @@ from src.config import (
     LLM_GPU_LAYERS,
     LLM_MODE,
     LLM_API_MODEL,
+    LLM_API_MAX_TOKENS,
     LLM_API_ROUTING,
     OPENROUTER_API_KEY,
     MODELS_DIR
@@ -264,7 +265,7 @@ class CoverageJudge:
                 model=self.model_name,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=LLM_JUDGE_TEMPERATURE,
-                max_tokens=LLM_JUDGE_MAX_TOKENS
+                max_tokens=LLM_API_MAX_TOKENS  # используем отдельный параметр для API
             )
             content = response.choices[0].message.content
         else:
@@ -272,7 +273,7 @@ class CoverageJudge:
             response = self.llm.create_chat_completion(
                 messages=[{"role": "user", "content": prompt}],
                 temperature=LLM_JUDGE_TEMPERATURE,
-                max_tokens=LLM_JUDGE_MAX_TOKENS
+                max_tokens=LLM_JUDGE_MAX_TOKENS  # используем параметр для локальной модели
             )
             content = response['choices'][0]['message']['content']
 

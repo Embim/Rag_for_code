@@ -52,7 +52,7 @@ class QueryReformulator:
             use_api: использовать ли API (если None - определяется из LLM_MODE)
         """
         from src.config import (
-            LLM_MODE, LLM_API_MODEL, LLM_API_ROUTING, OPENROUTER_API_KEY,
+            LLM_MODE, LLM_API_MODEL, LLM_API_MAX_TOKENS, LLM_API_ROUTING, OPENROUTER_API_KEY,
             LLM_CONTEXT_SIZE, LLM_GPU_LAYERS, MODELS_DIR, LLM_MODEL_FILE
         )
         
@@ -92,6 +92,7 @@ class QueryReformulator:
                     default_headers=default_headers
                 )
                 self.model_name = LLM_API_MODEL
+                self.max_tokens = LLM_API_MAX_TOKENS
                 self.llm = None
                 print(f"[QueryReformulator] Инициализирован (API)")
             except ImportError:
@@ -277,7 +278,7 @@ class QueryReformulator:
                     "model": self.model_name,
                     "messages": [{"role": "user", "content": prompt}],
                     "temperature": 0.3,
-                    "max_tokens": 100
+                    "max_tokens": self.max_tokens  # используем LLM_API_MAX_TOKENS (нужно для reasoning моделей)
                 }
                 
                 from src.config import LLM_API_ROUTING
@@ -358,7 +359,7 @@ class QueryReformulator:
                     "model": self.model_name,
                     "messages": [{"role": "user", "content": prompt}],
                     "temperature": 0.4,
-                    "max_tokens": 150
+                    "max_tokens": self.max_tokens  # используем LLM_API_MAX_TOKENS
                 }
                 
                 from src.config import LLM_API_ROUTING
@@ -434,7 +435,7 @@ class QueryReformulator:
                     "model": self.model_name,
                     "messages": [{"role": "user", "content": prompt}],
                     "temperature": 0.5,  # выше для разнообразия
-                    "max_tokens": 200
+                    "max_tokens": self.max_tokens  # используем LLM_API_MAX_TOKENS
                 }
                 
                 from src.config import LLM_API_ROUTING
