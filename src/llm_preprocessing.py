@@ -101,6 +101,11 @@ class LLMDocumentCleaner:
         self.llm_logger.addHandler(handler)
         # Не дублируем в root, оставляем только отдельный файл
         self.llm_logger.propagate = False
+        
+        # Отладочный вывод (только в verbose режиме)
+        if self.verbose:
+            print(f"  📝 LLM лог-файл: {log_path}")
+            print(f"     Хендлеров: {len(self.llm_logger.handlers)}")
 
     def load_model(self):
         """Загрузка LLM модели"""
@@ -281,7 +286,15 @@ class LLMDocumentCleaner:
         """
         if not self.llm_logger.handlers:
             # Логгер не инициализирован (например, не удалось создать файл)
-            return
+            # Попробуем переинициализировать
+            try:
+                self._init_llm_logger()
+            except Exception:
+                pass
+            
+            # Если все еще нет хендлеров - выходим
+            if not self.llm_logger.handlers:
+                return
 
         try:
             log_record = {
@@ -300,8 +313,15 @@ class LLMDocumentCleaner:
                 "clean_text_preview": str(result.get("clean_text", ""))[:1000],
             }
             self.llm_logger.info(json.dumps(log_record, ensure_ascii=False))
-        except Exception:
+            
+            # Принудительно сбрасываем буферы всех хендлеров
+            for handler in self.llm_logger.handlers:
+                handler.flush()
+        except Exception as e:
             # Логирование не должно ломать основной пайплайн
+            # Но можем вывести предупреждение в verbose режиме
+            if self.verbose:
+                print(f"  ⚠️  Ошибка логирования LLM результата: {e}")
             pass
 
     def process_documents(self, documents_df: pd.DataFrame,
