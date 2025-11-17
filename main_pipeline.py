@@ -182,7 +182,16 @@ def process_questions(embedding_indexer, bm25_indexer,
     save_every = 50  # каждые N вопросов сохраняем частичный файл
     partial_path = OUTPUTS_DIR / "submission_partial.csv"
 
-    for idx, row in tqdm(questions_df.iterrows(), total=len(questions_df)):
+    # Создаем прогресс-бар с описанием
+    pbar = tqdm(
+        total=len(questions_df),
+        desc="🔍 Обработка вопросов",
+        unit="вопрос",
+        bar_format='{desc}: {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}] {bar}'
+    )
+
+    for i in range(len(questions_df)):
+        row = questions_df.iloc[i]
         q_id = row['q_id']
         query = row['processed_query']
 
@@ -191,6 +200,10 @@ def process_questions(embedding_indexer, bm25_indexer,
             t0 = time.time()
             result = pipeline.search(query)
             dt = time.time() - t0
+
+            # Обновляем прогресс-бар с временем
+            pbar.set_postfix({'время': f'{dt:.2f}s', 'q_id': q_id})
+            pbar.update(1)
 
             # Формируем результат
             doc_ids = result['documents_id']
@@ -204,13 +217,13 @@ def process_questions(embedding_indexer, bm25_indexer,
                 'web_list': str(doc_ids[:5])
             })
 
-            if (idx + 1) % save_every == 0:
+            if (i + 1) % save_every == 0:
                 # Сохраняем частичный результат
                 pd.DataFrame(results).to_csv(partial_path, index=False)
                 elapsed = time.time() - started_at
-                per_q = elapsed / (idx + 1)
-                eta = per_q * (len(questions_df) - (idx + 1))
-                logger.info(f"Прогресс: {idx + 1}/{len(questions_df)} | {per_q:.2f}s/вопрос | ETA ~ {eta/60:.1f} мин | частичный файл: {partial_path}")
+                per_q = elapsed / (i + 1)
+                eta = per_q * (len(questions_df) - (i + 1))
+                logger.info(f"Прогресс: {i + 1}/{len(questions_df)} | {per_q:.2f}s/вопрос | ETA ~ {eta/60:.1f} мин | частичный файл: {partial_path}")
 
             # Логируем короткую метрику
             logger.debug(f"q_id={q_id} | кандидатов={result.get('num_candidates', 'NA')} | время={dt:.2f}s | docs={doc_ids[:5]}")
@@ -222,6 +235,11 @@ def process_questions(embedding_indexer, bm25_indexer,
                 'q_id': q_id,
                 'web_list': '[-1, -1, -1, -1, -1]'
             })
+            # Обновляем прогресс-бар даже при ошибке
+            pbar.update(1)
+
+    # Закрываем прогресс-бар
+    pbar.close()
 
     results_df = pd.DataFrame(results)
     return results_df
