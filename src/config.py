@@ -83,9 +83,9 @@ WEAVIATE_CLASS_NAME = "DocumentChunk"
 USE_WEAVIATE = os.environ.get("USE_WEAVIATE", "true").lower() == "true"  # по умолчанию используем Weaviate
 
 # Параметры поиска
-TOP_K_DENSE = 25  # топ-K для векторного поиска (уменьшено для скорости)
-TOP_K_BM25 = 25   # топ-K для BM25 (уменьшено для скорости)
-TOP_K_RERANK = 20 # топ-K после rerank для финального выбора
+TOP_K_DENSE = 20  # топ-K для векторного поиска (уменьшено для скорости)
+TOP_K_BM25 = 20   # топ-K для BM25 (уменьшено для скорости)
+TOP_K_RERANK = 10 # топ-K после rerank для финального выбора
 HYBRID_ALPHA = 0.5  # вес для dense (1-alpha для BM25)
 
 # Параметры Reciprocal Rank Fusion
@@ -106,8 +106,8 @@ ENABLE_MULTI_HOP = True
 MAX_HOPS = 3  # максимальное количество итераций (обычно 2-3)
 
 # Параметры Query Reformulation
-ENABLE_QUERY_REFORMULATION = True
-QUERY_REFORMULATION_METHOD = "all"  # "simple", "expanded", "multi", "all"
+ENABLE_QUERY_REFORMULATION = False
+QUERY_REFORMULATION_METHOD = "simple"  # "simple", "expanded", "multi", "all"
 QUERY_REFORMULATION_CACHE = True  # кэширование переформулированных запросов
 
 # Параметры Reranker
@@ -187,17 +187,17 @@ LLM_JUDGE_MAX_TOKENS = LLM_MAX_TOKENS
 
 # Параметры агентного RAG
 ENABLE_AGENT_RAG = os.environ.get("ENABLE_AGENT_RAG", "false").lower() == "true"
-COVERAGE_THRESHOLD = 0.7  # порог полноты контекста для остановки итераций
-MAX_AGENT_ITERATIONS = 3  # максимальное количество итераций поиска
+COVERAGE_THRESHOLD = 0.5  # порог полноты контекста для остановки итераций
+MAX_AGENT_ITERATIONS = 2  # максимальное количество итераций поиска
 
 # Параметры Grid Search оптимизации
-GRID_SEARCH_SAMPLE_SIZE = 50 # размер выборки для оптимизации гиперпараметров (рекомендуется 50)
+GRID_SEARCH_SAMPLE_SIZE = 10 # размер выборки для оптимизации гиперпараметров (рекомендуется 50)
 GRID_SEARCH_USE_LLM = os.environ.get("GRID_SEARCH_USE_LLM", "true").lower() == "true"  # использовать LLM для оценки (точнее, но медленнее ~1-2 часа)
 GRID_SEARCH_MODE = os.environ.get("GRID_SEARCH_MODE", "test")  # режим: "test" (5 комбинаций), "quick" (54 комбинации) или "full" (1225 комбинаций)
 
 # Параметры Query Expansion (расширение запроса)
-ENABLE_QUERY_EXPANSION = os.environ.get("ENABLE_QUERY_EXPANSION", "true").lower() == "true"  # ✅ ВКЛЮЧЕНО
-QUERY_EXPANSION_METHOD = "hybrid"  # "synonyms", "llm", "hybrid" (synonyms - быстро и эффективно)
+ENABLE_QUERY_EXPANSION = os.environ.get("ENABLE_QUERY_EXPANSION", "false").lower() == "true"  # ✅ ВКЛЮЧЕНО
+QUERY_EXPANSION_METHOD = "synonyms"  # "synonyms", "llm", "hybrid" (synonyms - быстро и эффективно)
 
 # Параметры Metadata Filtering (фильтрация по метаданным)
 ENABLE_METADATA_FILTER = os.environ.get("ENABLE_METADATA_FILTER", "true").lower() == "true"  # по умолчанию ВКЛ
