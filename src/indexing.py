@@ -253,7 +253,7 @@ class WeaviateIndexer:
             (scores, results) - скоры и найденные документы
         """
         # Генерируем эмбеддинг запроса
-        query_embedding = self.model.encode([query], normalize_embeddings=True)[0]
+        query_embedding = self.model.encode([query], normalize_embeddings=True, show_progress_bar=False)[0]
 
         # Выполняем гибридный поиск (BM25 + векторный)
         response = self.collection.query.hybrid(
@@ -301,7 +301,7 @@ class WeaviateIndexer:
             (scores, results) - скоры и найденные документы
         """
         # Генерируем эмбеддинг запроса
-        query_embedding = self.model.encode([query], normalize_embeddings=True)[0]
+        query_embedding = self.model.encode([query], normalize_embeddings=True, show_progress_bar=False)[0]
 
         # Выполняем поиск
         response = self.collection.query.near_vector(

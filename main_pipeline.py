@@ -11,7 +11,15 @@ import argparse
 import pandas as pd
 import numpy as np
 from pathlib import Path
+import os
+
+# Отключаем tqdm в transformers/sentence-transformers чтобы не мешал нашему прогресс-бару
+os.environ['TRANSFORMERS_NO_ADVISORY_WARNINGS'] = '1'
+os.environ['TOKENIZERS_PARALLELISM'] = 'false'
+
 from tqdm import tqdm
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
 
 from src.config import (
     WEBSITES_CSV,
@@ -22,7 +30,8 @@ from src.config import (
     USE_WEAVIATE,
     ENABLE_AGENT_RAG,
     LOG_LEVEL,
-    LOG_FILE
+    LOG_FILE,
+    QUESTION_PROCESSING_WORKERS
 )
 from src.preprocessing import load_and_preprocess_documents, load_and_preprocess_questions
 from src.chunking import create_chunks_from_documents
@@ -172,74 +181,117 @@ def process_questions(embedding_indexer, bm25_indexer,
     # Создание RAG пайплайна
     pipeline = RAGPipeline(embedding_indexer, bm25_indexer)
 
-    # Обработка каждого вопроса
-    results = []
-
-    logger.info(f"Обработка {len(questions_df)} вопросов...")
-
-    started_at = time.time()
-    last_partial_save = time.time()
-    save_every = 50  # каждые N вопросов сохраняем частичный файл
-    partial_path = OUTPUTS_DIR / "submission_partial.csv"
-
-    # Создаем прогресс-бар с описанием
-    pbar = tqdm(
-        total=len(questions_df),
-        desc="🔍 Обработка вопросов",
-        unit="вопрос",
-        bar_format='{desc}: {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}] {bar}'
-    )
-
-    for i in range(len(questions_df)):
-        row = questions_df.iloc[i]
-        q_id = row['q_id']
-        query = row['processed_query']
-
+    # Вспомогательная функция для обработки одного вопроса
+    def process_single_question(idx, q_id, query):
+        """Обработка одного вопроса (для параллельной обработки)"""
         try:
-            # Поиск релевантных документов
             t0 = time.time()
             result = pipeline.search(query)
             dt = time.time() - t0
 
-            # Обновляем прогресс-бар с временем
-            pbar.set_postfix({'время': f'{dt:.2f}s', 'q_id': q_id})
-            pbar.update(1)
-
-            # Формируем результат
             doc_ids = result['documents_id']
 
             # Дополняем до 5 документов если нужно
             while len(doc_ids) < 5:
-                doc_ids.append(-1)  # заглушка
+                doc_ids.append(-1)
 
-            results.append({
-                'q_id': q_id,
-                'web_list': str(doc_ids[:5])
-            })
-
-            if (i + 1) % save_every == 0:
-                # Сохраняем частичный результат
-                pd.DataFrame(results).to_csv(partial_path, index=False)
-                elapsed = time.time() - started_at
-                per_q = elapsed / (i + 1)
-                eta = per_q * (len(questions_df) - (i + 1))
-                logger.info(f"Прогресс: {i + 1}/{len(questions_df)} | {per_q:.2f}s/вопрос | ETA ~ {eta/60:.1f} мин | частичный файл: {partial_path}")
-
-            # Логируем короткую метрику
             logger.debug(f"q_id={q_id} | кандидатов={result.get('num_candidates', 'NA')} | время={dt:.2f}s | docs={doc_ids[:5]}")
 
+            return {
+                'idx': idx,
+                'q_id': q_id,
+                'web_list': str(doc_ids[:5]),
+                'time': dt,
+                'success': True
+            }
         except Exception as e:
             logger.error(f"Ошибка при обработке вопроса {q_id}: {e}")
-            # Возвращаем пустой результат
-            results.append({
+            return {
+                'idx': idx,
                 'q_id': q_id,
-                'web_list': '[-1, -1, -1, -1, -1]'
-            })
-            # Обновляем прогресс-бар даже при ошибке
-            pbar.update(1)
+                'web_list': '[-1, -1, -1, -1, -1]',
+                'time': 0.0,
+                'success': False
+            }
+
+    # Обработка вопросов
+    results = [None] * len(questions_df)  # Пре-аллоцируем массив для сохранения порядка
+
+    logger.info(f"Обработка {len(questions_df)} вопросов (параллельно: {QUESTION_PROCESSING_WORKERS} воркеров)...")
+
+    started_at = time.time()
+    save_every = 50  # Сохранение файла каждые N вопросов
+    log_every = 10   # Логирование прогресса каждые N вопросов
+    partial_path = OUTPUTS_DIR / "submission_partial.csv"
+
+    # Lock для thread-safe операций
+    results_lock = threading.Lock()
+    completed = 0
+
+    # Создаем прогресс-бар с описанием
+    pbar = tqdm(
+        total=len(questions_df),
+        desc=f"🔍 Обработка вопросов (x{QUESTION_PROCESSING_WORKERS})",
+        unit="вопрос",
+        bar_format='{desc}: {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}] {bar}',
+        position=0,
+        leave=True,
+        ncols=100,
+        mininterval=0.5  # Обновление минимум раз в 0.5 сек
+    )
+
+    # Параллельная обработка
+    with ThreadPoolExecutor(max_workers=QUESTION_PROCESSING_WORKERS) as executor:
+        # Подготавливаем задачи
+        futures = {}
+        for i in range(len(questions_df)):
+            row = questions_df.iloc[i]
+            q_id = row['q_id']
+            query = row['processed_query']
+            future = executor.submit(process_single_question, i, q_id, query)
+            futures[future] = i
+
+        # Обрабатываем результаты по мере завершения
+        for future in as_completed(futures):
+            result = future.result()
+            idx = result['idx']
+
+            # Thread-safe сохранение результата
+            with results_lock:
+                results[idx] = {
+                    'q_id': result['q_id'],
+                    'web_list': result['web_list']
+                }
+                completed += 1
+
+                # Обновляем прогресс-бар
+                pbar.set_postfix({
+                    'время': f"{result['time']:.2f}s",
+                    'q_id': result['q_id']
+                })
+                pbar.update(1)
+
+                # Логируем прогресс каждые N вопросов
+                if completed % log_every == 0:
+                    elapsed = time.time() - started_at
+                    per_q = elapsed / completed
+                    eta = per_q * (len(questions_df) - completed)
+                    logger.info(f"📊 Прогресс: {completed}/{len(questions_df)} ({100*completed/len(questions_df):.1f}%) | {per_q:.2f}s/вопрос | ETA ~ {eta/60:.1f} мин")
+
+                # Периодически сохраняем частичный результат
+                if completed % save_every == 0:
+                    # Фильтруем None значения и сохраняем
+                    partial_results = [r for r in results if r is not None]
+                    pd.DataFrame(partial_results).to_csv(partial_path, index=False)
+                    logger.info(f"💾 Сохранен частичный файл: {partial_path}")
 
     # Закрываем прогресс-бар
     pbar.close()
+
+    # Финальный лог
+    total_time = time.time() - started_at
+    avg_time = total_time / len(questions_df) if len(questions_df) > 0 else 0
+    logger.info(f"✅ Обработка завершена: {len(questions_df)} вопросов за {total_time/60:.1f} мин (avg: {avg_time:.2f}s/вопрос)")
 
     results_df = pd.DataFrame(results)
     return results_df
@@ -533,6 +585,7 @@ def cmd_check_env(args):
     check_env_var("LLM_API_MODEL", config.LLM_API_MODEL)
     check_env_var("LLM_API_ROUTING", config.LLM_API_ROUTING if config.LLM_API_ROUTING else "(не установлено)")
     check_env_var("OPENROUTER_API_KEY", config.OPENROUTER_API_KEY, required=(config.LLM_MODE == "API"), sensitive=True)
+    logger.info(f"   LLM_API_MAX_TOKENS = {config.LLM_API_MAX_TOKENS}")
     logger.info(f"   LLM_API_MAX_WORKERS = {config.LLM_API_MAX_WORKERS}")
     logger.info(f"   LLM_API_TIMEOUT = {config.LLM_API_TIMEOUT}s")
     logger.info(f"   LLM_API_RETRIES = {config.LLM_API_RETRIES}")
@@ -552,6 +605,7 @@ def cmd_check_env(args):
     logger.info("\n⚙️  ПАРАМЕТРЫ ОБРАБОТКИ:")
     logger.info(f"   CSV_CHUNKSIZE = {config.CSV_CHUNKSIZE}")
     logger.info(f"   LLM_PARALLEL_WORKERS = {config.LLM_PARALLEL_WORKERS}")
+    logger.info(f"   QUESTION_PROCESSING_WORKERS = {config.QUESTION_PROCESSING_WORKERS} (параллельная обработка вопросов)")
     logger.info(f"   FORCE_CPU = {os.environ.get('FORCE_CPU', 'false')}")
     
     # Функциональные флаги

@@ -174,6 +174,9 @@ LLM_API_TIMEOUT = int(os.environ.get("LLM_API_TIMEOUT", "60"))  # таймаут
 LLM_API_RETRIES = int(os.environ.get("LLM_API_RETRIES", "3"))  # количество повторных попыток при ошибке
 LLM_API_MAX_TOKENS = int(os.environ.get("LLM_API_MAX_TOKENS", "32768"))  # max токенов для API (больше чем для локальной модели, т.к. reasoning модели генерируют <think>...</think>)
 
+# Параметры параллельной обработки вопросов
+QUESTION_PROCESSING_WORKERS = int(os.environ.get("QUESTION_PROCESSING_WORKERS", "20"))  # количество параллельных воркеров для обработки вопросов (1-20, рекомендуется 5-10 для API)
+
 # Финальные результаты
 TOP_N_DOCUMENTS = 5  # количество документов в финальном ответе
 
