@@ -17,6 +17,14 @@ Available parsers:
 from pathlib import Path
 from typing import Optional
 
+from .base import (
+    BaseParser,
+    CodeEntity,
+    EntityType,
+    ParseResult,
+    ParsingError,
+    register_parser,
+)
 from .python_parser import PythonParser
 from .django_parser import DjangoParser
 from .fastapi_parser import FastAPIParser
@@ -59,4 +67,16 @@ def get_parser(file_path: Path, framework: Optional[str] = None):
         return None
 
 
-__all__ = ['PythonParser', 'DjangoParser', 'FastAPIParser', 'ReactParser', 'get_parser']
+__all__ = [
+    'BaseParser',
+    'CodeEntity', 
+    'EntityType',
+    'ParseResult',
+    'ParsingError',
+    'register_parser',
+    'PythonParser', 
+    'DjangoParser', 
+    'FastAPIParser', 
+    'ReactParser', 
+    'get_parser',
+]

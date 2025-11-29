@@ -6,7 +6,7 @@ import pytest
 from pathlib import Path
 
 from src.code_rag.parsers.react_parser import ReactParser
-from src.core.parsers import EntityType
+from src.code_rag.parsers.base import EntityType
 
 
 class TestReactParser:

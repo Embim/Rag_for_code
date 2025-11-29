@@ -9,7 +9,7 @@ import ast
 from pathlib import Path
 from typing import List, Optional, Dict, Any
 
-from ...core.parsers import (
+from .base import (
     BaseParser,
     CodeEntity,
     EntityType,
@@ -17,7 +17,7 @@ from ...core.parsers import (
     ParsingError,
     register_parser
 )
-from ...logger import get_logger
+from src.logger import get_logger
 
 
 logger = get_logger(__name__)

@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import List, Dict, Set, Optional, Tuple
 from collections import defaultdict
 
-from ...core.parsers import CodeEntity, EntityType as ParserEntityType, ParseResult
+from ..parsers.base import CodeEntity, EntityType as ParserEntityType, ParseResult
 from .models import (
     GraphNode, GraphRelationship,
     RepositoryNode, FileNode, FunctionNode, ClassNode,

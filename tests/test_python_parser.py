@@ -7,7 +7,7 @@ from pathlib import Path
 import tempfile
 
 from src.code_rag.parsers.python_parser import PythonParser
-from src.core.parsers import EntityType
+from src.code_rag.parsers.base import EntityType
 
 
 class TestPythonParser:
