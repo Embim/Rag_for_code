@@ -1,0 +1,85 @@
+# Base configuration for RAG for Code system
+# All profiles inherit these settings and can override them
+
+# Weaviate connection
+weaviate:
+  url: "http://localhost:8080"
+  timeout: 30
+
+# Neo4j connection (for knowledge graph)
+neo4j:
+  uri: "bolt://localhost:7687"
+  user: "neo4j"
+  password: "${NEO4J_PASSWORD}"  # From environment variable
+  database: "code_rag"
+
+# Embedding model
+embedding:
+  model: "BAAI/bge-m3"
+  device: "cuda"  # or "cpu"
+  batch_size: 128
+  chunk_size: 100
+
+# LLM settings
+llm:
+  mode: "api"  # "local" or "api"
+
+  # API mode (OpenRouter)
+  api:
+    provider: "openrouter"
+    model: "tngtech/deepseek-r1t2-chimera:free"
+    max_tokens: 32768
+    max_workers: 10
+    timeout: 60
+    retries: 3
+
+  # Local mode (llama-cpp)
+  local:
+    model_file: "Qwen3-32B-IQ4_NL.gguf"
+    context_size: 8192
+    temperature: 0.1
+    max_tokens: 1024
+    gpu_layers: -1  # -1 = all layers on GPU
+    n_batch: 1024
+    n_threads: 16
+
+# Logging
+logging:
+  level: "INFO"
+  file: "outputs/pipeline.log"
+
+# Processing
+processing:
+  parallel_workers: 10
+  question_workers: 20
+
+# Directories
+directories:
+  data: "data"
+  models: "models"
+  outputs: "outputs"
+  repos: "data/repos"  # Where git repositories are cloned
+
+# Agent settings (Phase 6)
+agents:
+  # Code Explorer Agent
+  code_explorer:
+    max_iterations: 10  # Maximum tool calls per question
+    timeout_seconds: 120  # Overall timeout
+    max_tokens_per_call: 4096
+    temperature: 0.1
+    model: "anthropic/claude-sonnet-4"  # Best reasoning model
+
+  # Query Orchestrator
+  orchestrator:
+    model: "deepseek/deepseek-r1:free"  # Lightweight for classification
+    temperature: 0.0  # Deterministic classification
+    max_tokens: 1024
+
+  # Caching
+  cache:
+    enabled: true
+    backend: "memory"  # "memory" or "redis"
+    query_ttl: 86400  # 24 hours
+    tool_result_ttl: 3600  # 1 hour
+    semantic_similarity_threshold: 0.95  # For semantic cache

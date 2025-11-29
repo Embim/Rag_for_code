@@ -1,8 +1,50 @@
 services:
+  # ==========================================================================
+  # Neo4j - Knowledge Graph Database
+  # ==========================================================================
+  neo4j:
+    image: neo4j:5.15.0
+    container_name: code-rag-neo4j
+    restart: unless-stopped
+    ports:
+      - "7474:7474"   # HTTP (Browser UI)
+      - "7687:7687"   # Bolt protocol
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+    environment:
+      # Authentication
+      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:-password}
+
+      # Memory settings (adjust based on available RAM)
+      NEO4J_server_memory_heap_initial__size: 1G
+      NEO4J_server_memory_heap_max__size: 4G
+      NEO4J_server_memory_pagecache_size: 2G
+
+      # Performance
+      NEO4J_dbms_memory_transaction_total_max: 1G
+      NEO4J_PLUGINS: '["apoc"]'
+
+      # Logging
+      NEO4J_dbms_logs_debug_level: INFO
+
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider --quiet http://localhost:7474 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ==========================================================================
+  # Weaviate - Vector Database
+  # ==========================================================================
   weaviate:
     image: cr.weaviate.io/semitechnologies/weaviate:1.27.5
-    container_name: alfabank-weaviate
+    container_name: code-rag-weaviate
     restart: unless-stopped
+    depends_on:
+      neo4j:
+        condition: service_healthy
     ports:
       - "8080:8080"
       - "50051:50051"
@@ -48,5 +90,9 @@ services:
       start_period: 30s
 
 volumes:
+  neo4j_data:
+    driver: local
+  neo4j_logs:
+    driver: local
   weaviate_data:
     driver: local

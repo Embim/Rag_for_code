@@ -1,0 +1,88 @@
+# Profile for Hybrid RAG
+# Combines document and code search
+
+profile_name: "hybrid"
+description: "Hybrid RAG for both documents and code repositories"
+
+# Chunking: Use appropriate strategy based on content type
+chunking:
+  # Auto-detect based on source type
+  auto_detect: true
+
+  # Text chunking (for documents)
+  text:
+    chunk_size: 200
+    overlap: 50
+    min_chunk_size: 50
+    include_title: true
+
+  # Code chunking (for repositories)
+  code:
+    max_function_lines: 500
+    include_imports: true
+    include_class_context: true
+
+# Search parameters
+search:
+  # Balanced weights
+  top_k_dense: 20
+  top_k_bm25: 20
+  top_k_rerank: 10
+  hybrid_alpha: 0.4  # Slightly favor BM25 (code needs exact matches)
+
+# Enable/disable features
+features:
+  enable_rrf: true
+  enable_context_window: true
+  enable_multi_hop: true
+  max_hops: 3
+  enable_query_reformulation: true
+  enable_query_expansion: true
+  enable_metadata_filter: true
+  enable_usefulness_filter: true
+  enable_dynamic_top_k: true
+  enable_scope_detection: true  # Auto-detect document vs code vs both
+
+# Scope detection
+scope_detection:
+  enabled: true
+  # Keywords for classification
+  document_keywords: ["документ", "регламент", "инструкция", "правило", "процедура"]
+  code_keywords: ["функция", "класс", "компонент", "API", "эндпоинт", "модель"]
+  hybrid_keywords: ["как работает", "как реализовано", "поток данных", "интеграция"]
+
+# Reranker
+reranker:
+  type: "cross_encoder"
+  model: "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"
+
+# Sources: both documents and code
+sources:
+  # Document sources
+  - type: "csv"
+    path: "websites.csv"
+    apply_lemmatization: false
+
+  # Code repositories (loaded dynamically)
+  # - type: "git"
+  #   url: "..."
+  #   name: "..."
+
+# Query routing
+query_routing:
+  enabled: true
+  # Route queries to appropriate retriever based on scope
+  auto_route: true
+
+# Aggregation
+result_aggregation:
+  # How to combine results from multiple sources
+  strategy: "weighted_merge"  # "weighted_merge", "round_robin", "separate"
+
+  # Weights for different source types
+  weights:
+    documents: 0.5
+    code: 0.5
+
+  # How to present mixed results
+  presentation: "grouped"  # "grouped" or "interleaved"

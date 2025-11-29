@@ -4,7 +4,13 @@
       "Bash(python:*)",
       "Bash(pip install:*)",
       "Bash(data_analysis_output.txt)",
-      "Bash(test:*)"
+      "Bash(test:*)",
+      "Bash(mkdir:*)",
+      "Bash(node --version:*)",
+      "Bash(npm install:*)",
+      "Bash(node:*)",
+      "Bash(findstr:*)",
+      "Bash(curl:*)"
     ],
     "deny": [],
     "ask": []

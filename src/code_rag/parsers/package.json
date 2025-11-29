@@ -1,0 +1,23 @@
+{
+  "name": "code-rag-js-parser",
+  "version": "1.0.0",
+  "description": "JavaScript/TypeScript parser for Code RAG system using Babel",
+  "main": "js_parser.js",
+  "scripts": {
+    "test": "node js_parser.js"
+  },
+  "dependencies": {
+    "@babel/parser": "^7.26.2",
+    "@babel/traverse": "^7.26.4"
+  },
+  "devDependencies": {},
+  "keywords": [
+    "parser",
+    "javascript",
+    "typescript",
+    "react",
+    "ast"
+  ],
+  "author": "",
+  "license": "MIT"
+}

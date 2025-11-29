@@ -1,0 +1,141 @@
+# Profile for Code RAG
+# Optimized for code repositories (Python, TypeScript, etc.)
+
+profile_name: "code"
+description: "Code RAG for analyzing git repositories"
+
+# Override chunking for code
+chunking:
+  strategy: "code"  # AST-based chunking
+  # Code chunks are structural units (functions, classes)
+  # No fixed size, but limits apply
+  max_function_lines: 500  # Split very large functions
+  include_imports: true
+  include_class_context: true
+
+# Search parameters optimized for code
+search:
+  top_k_dense: 15  # Fewer top results for code
+  top_k_bm25: 25  # Higher for BM25 (exact name matches important)
+  top_k_rerank: 10
+  hybrid_alpha: 0.3  # More weight on BM25 for code (0.7 BM25, 0.3 dense)
+
+# Enable/disable features
+features:
+  enable_rrf: true
+  enable_context_window: true  # Add surrounding functions/classes
+  enable_multi_hop: true  # Critical for code - follow calls/imports
+  max_hops: 4  # Deeper traversal for code
+  enable_query_reformulation: true  # Reformulate code queries
+  enable_query_expansion: true  # Expand technical terms
+  enable_metadata_filter: true
+  enable_scope_detection: true  # Detect frontend/backend/hybrid queries
+  enable_cross_repo_search: true  # Search across multiple repos
+
+# Reranker for code
+reranker:
+  type: "cross_encoder"  # Consider code-specific reranker
+  model: "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"
+  # TODO: Evaluate code-specific rerankers if available
+
+# Multi-hop reasoning (critical for code)
+multi_hop:
+  enabled: true
+  max_hops: 4
+  follow_calls: true  # Follow function calls
+  follow_imports: true  # Follow import statements
+  follow_inheritance: true  # Follow class inheritance
+
+# Graph traversal strategies
+graph:
+  # Default strategy for "how does X work" queries
+  default_strategy: "ui_to_database"
+
+  # Available strategies
+  strategies:
+    ui_to_database:
+      description: "Trace from UI component to database model"
+      directions: ["SENDS_REQUEST_TO", "HANDLES_REQUEST", "CALLS", "USES_MODEL"]
+
+    database_to_ui:
+      description: "Find all UI displays of data model"
+      directions: ["USES_MODEL", "HANDLES_REQUEST", "SENDS_REQUEST_TO", "RENDERS"]
+
+    impact_analysis:
+      description: "Find what breaks if entity changes"
+      directions: ["CALLED_BY", "IMPORTED_BY", "INHERITS_FROM"]
+
+    pattern_search:
+      description: "Find entities matching pattern"
+      use_filters: true
+
+# Repository configuration
+repositories:
+  # Repositories are loaded from config or CLI
+  # Example:
+  # - name: "frontend"
+  #   url: "git@github.com:org/frontend.git"
+  #   type: "frontend"
+  #   framework: "react"
+  #   branch: "main"
+
+# Parser configuration
+parsers:
+  python:
+    enabled: true
+    extract_docstrings: true
+    extract_type_hints: true
+    extract_decorators: true
+
+  django:
+    enabled: true
+    parse_models: true
+    parse_views: true
+    parse_urls: true
+    parse_serializers: true
+
+  fastapi:
+    enabled: true
+    parse_endpoints: true
+    parse_pydantic_models: true
+    parse_dependencies: true
+    use_openapi_spec: true  # Use /openapi.json if available
+
+  typescript:
+    enabled: true
+    tool: "babel"  # "babel", "typescript-compiler", or "tree-sitter"
+
+  react:
+    enabled: true
+    parse_components: true
+    parse_hooks: true
+    parse_api_calls: true
+    parse_routes: true
+    parse_forms: true
+
+# API linking configuration
+api_linking:
+  strategy: "openapi_with_fallback"  # "exact", "heuristic", "openapi_with_fallback"
+
+  # URL normalization
+  normalize_trailing_slashes: true
+  normalize_base_url: true
+
+  # Heuristics configuration
+  use_type_matching: true  # Match request/response types
+  confidence_threshold: 0.7  # Minimum confidence for auto-linking
+
+  # Manual overrides (if automatic linking fails)
+  manual_links: []
+    # Example:
+    # - frontend_pattern: "/api/products/:id"
+    #   backend_endpoint: "GET /products/{product_id}"
+
+# Visualization
+visualization:
+  enabled: false  # Enable in Phase 5
+  playwright:
+    headless: true
+    timeout: 30000
+  mermaid:
+    theme: "default"
