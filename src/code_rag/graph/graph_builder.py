@@ -123,13 +123,22 @@ class GraphBuilder:
         rel_path = str(file_path.relative_to(repo_info.path))
         file_node_id = create_node_id(repo_info.name, rel_path)
 
+        # Count lines with proper encoding handling
+        line_count = 0
+        if file_path.exists():
+            try:
+                with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    line_count = len(f.readlines())
+            except Exception:
+                line_count = 0
+
         file_node = FileNode(
             id=file_node_id,
             name=file_path.name,
             file_path=rel_path,
             language=parse_result.language,
             size_bytes=file_path.stat().st_size if file_path.exists() else 0,
-            line_count=len(open(file_path).readlines()) if file_path.exists() else 0
+            line_count=line_count
         )
 
         self.nodes[file_node.id] = file_node
@@ -347,6 +356,49 @@ class GraphBuilder:
                 # Would need to parse router configuration
                 # TODO: Implement in dedicated router parser
 
+                # Function/Method CALLS other functions
+                if entity.type in (ParserEntityType.FUNCTION, ParserEntityType.METHOD):
+                    calls = entity.calls or []
+
+                    for called_func_name in calls:
+                        # Try to find the called function in the graph
+                        # First try exact name match in same file
+                        target_id = self._find_function_in_file(
+                            repo_info.name,
+                            rel_path,
+                            called_func_name
+                        )
+
+                        # If not found in same file, try across all files
+                        if not target_id:
+                            target_id = self._find_function_by_name(
+                                repo_info.name,
+                                called_func_name
+                            )
+
+                        if target_id:
+                            self.relationships.append(GraphRelationship(
+                                type=RelationshipType.CALLS,
+                                source_id=entity_id,
+                                target_id=target_id
+                            ))
+
+        # Create IMPORTS relationships (file-level)
+        for file_path, parse_result in parse_results:
+            rel_path = str(file_path.relative_to(repo_info.path))
+            file_node_id = create_node_id(repo_info.name, rel_path)
+
+            for import_name in parse_result.imports:
+                # Try to find the imported file/module
+                target_file_id = self._find_file_by_import(repo_info.name, import_name, rel_path)
+
+                if target_file_id:
+                    self.relationships.append(GraphRelationship(
+                        type=RelationshipType.IMPORTS,
+                        source_id=file_node_id,
+                        target_id=target_file_id
+                    ))
+
         logger.info(f"Created {len(self.relationships)} relationships")
 
     def _find_class_node(self, repository: str, class_name: str) -> Optional[str]:
@@ -361,6 +413,112 @@ class GraphBuilder:
         for node_id, node in self.nodes.items():
             if isinstance(node, ModelNode) and node.name == model_name:
                 return node_id
+        return None
+
+    def _find_function_in_file(
+        self,
+        repository: str,
+        file_path: str,
+        func_name: str
+    ) -> Optional[str]:
+        """
+        Find function node by name within a specific file.
+
+        Handles:
+        - Simple names: "foo"
+        - Method names: "ClassName.method"
+        - Full paths: "module.Class.method"
+        """
+        # Get all nodes in this file
+        file_nodes = self.nodes_by_file.get(file_path, [])
+
+        for node_id in file_nodes:
+            node = self.nodes.get(node_id)
+            if not node:
+                continue
+
+            # Check if this is a function/method node
+            if isinstance(node, FunctionNode):
+                # Try exact match
+                if node.name == func_name:
+                    return node_id
+
+                # Try matching last part of qualified name (e.g., "method" matches "Class.method")
+                if '.' in func_name:
+                    parts = func_name.split('.')
+                    if node.name == parts[-1]:
+                        return node_id
+
+        return None
+
+    def _find_function_by_name(self, repository: str, func_name: str) -> Optional[str]:
+        """
+        Find function node by name across all files in repository.
+
+        Returns first match. Prioritizes exact matches over partial matches.
+        """
+        # Extract simple name if it's a qualified name
+        simple_name = func_name.split('.')[-1] if '.' in func_name else func_name
+
+        # First pass: exact name match
+        for node_id, node in self.nodes.items():
+            if isinstance(node, FunctionNode):
+                if node.name == simple_name or node.name == func_name:
+                    return node_id
+
+        # Second pass: try matching against full_name in node ID
+        # (for methods like "ClassName.method_name")
+        for node_id, node in self.nodes.items():
+            if isinstance(node, FunctionNode):
+                if simple_name in node_id or func_name in node_id:
+                    return node_id
+
+        return None
+
+    def _find_file_by_import(
+        self,
+        repository: str,
+        import_name: str,
+        current_file: str
+    ) -> Optional[str]:
+        """
+        Find file node by import statement.
+
+        Handles:
+        - Relative imports: "from .module import foo" → look in same directory
+        - Absolute imports: "from app.models import User" → look for app/models.py
+        - Module imports: "import json" → ignore (standard library)
+        """
+        # Ignore standard library imports
+        stdlib_modules = {
+            'os', 'sys', 'json', 'time', 'datetime', 'pathlib', 'typing',
+            'collections', 'itertools', 'functools', 'logging', 'asyncio',
+            'dataclasses', 'enum', 'abc', 'copy', 're', 'math', 'random'
+        }
+
+        # Extract module name from import
+        # "from app.models import User" → "app.models"
+        # "import app.models" → "app.models"
+        module_name = import_name.split(' import ')[0].replace('from ', '').replace('import ', '').strip()
+
+        # Check if it's a standard library module
+        if module_name.split('.')[0] in stdlib_modules:
+            return None
+
+        # Convert module path to file path
+        # "app.models" → "app/models.py"
+        potential_paths = [
+            module_name.replace('.', '/') + '.py',
+            module_name.replace('.', '/') + '/__init__.py',
+        ]
+
+        # Try to find matching file node
+        for node_id, node in self.nodes.items():
+            if isinstance(node, FileNode):
+                for potential_path in potential_paths:
+                    if node.file_path.endswith(potential_path):
+                        return node_id
+
         return None
 
     def _save_to_neo4j(self) -> Dict[str, int]:

@@ -23,7 +23,6 @@ from src.logger import get_logger
 logger = get_logger(__name__)
 
 
-@register_parser
 class PythonParser(BaseParser):
     """
     Parser for Python source code.
@@ -159,6 +158,9 @@ class PythonParser(BaseParser):
             if node.returns:
                 return_type = ast.unparse(node.returns)
 
+            # Extract function calls
+            calls = self._extract_function_calls(node)
+
             # Determine entity type
             entity_type = EntityType.METHOD if parent_class else EntityType.FUNCTION
 
@@ -172,6 +174,7 @@ class PythonParser(BaseParser):
                 signature=signature,
                 docstring=docstring,
                 parent=parent_class,
+                calls=calls,  # Add extracted calls
                 decorators=decorators,
                 parameters=parameters,
                 return_type=return_type,
@@ -363,3 +366,44 @@ class PythonParser(BaseParser):
                 return f"@{ast.unparse(decorator)}"
         except Exception:
             return "@unknown"
+
+    def _extract_function_calls(self, node: ast.FunctionDef) -> List[str]:
+        """
+        Extract all function calls made within a function.
+
+        Returns a list of function names that this function calls.
+        Handles:
+        - Simple calls: foo()
+        - Method calls: obj.method()
+        - Chained calls: obj.method().another()
+        """
+        calls = []
+        seen = set()  # Avoid duplicates
+
+        for child in ast.walk(node):
+            if isinstance(child, ast.Call):
+                call_name = None
+
+                if isinstance(child.func, ast.Name):
+                    # Simple function call: foo()
+                    call_name = child.func.id
+
+                elif isinstance(child.func, ast.Attribute):
+                    # Method call: obj.method() or module.function()
+                    # Extract just the method/function name
+                    call_name = child.func.attr
+
+                    # Optionally include the full path for clarity
+                    try:
+                        full_name = ast.unparse(child.func)
+                        # Only include if it's a module.function pattern (not self.method)
+                        if not full_name.startswith('self.'):
+                            call_name = full_name
+                    except Exception:
+                        pass
+
+                if call_name and call_name not in seen:
+                    seen.add(call_name)
+                    calls.append(call_name)
+
+        return calls

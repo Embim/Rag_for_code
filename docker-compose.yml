@@ -17,12 +17,12 @@ services:
       NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:-password}
 
       # Memory settings (adjust based on available RAM)
-      NEO4J_server_memory_heap_initial__size: 1G
-      NEO4J_server_memory_heap_max__size: 4G
-      NEO4J_server_memory_pagecache_size: 2G
+      NEO4J_server_memory_heap_initial__size: 4G
+      NEO4J_server_memory_heap_max__size: 16G
+      NEO4J_server_memory_pagecache_size: 8G
 
       # Performance
-      NEO4J_dbms_memory_transaction_total_max: 1G
+      NEO4J_dbms_memory_transaction_total_max: 4G
       NEO4J_PLUGINS: '["apoc"]'
 
       # Logging
@@ -63,7 +63,7 @@ services:
       # A100 80GB оптимизация - максимальная производительность
       ASYNC_INDEXING: 'true'
       LIMIT_RESOURCES: 'false'  # Не ограничиваем ресурсы
-      GOMEMLIMIT: '60GiB'  # Максимум памяти (оставляем 20GB системе)
+      # GOMEMLIMIT: '8GiB'  # Максимум памяти (оставляем 20GB системе)
 
       # Отключаем телеметрию
       DISABLE_TELEMETRY: 'true'
@@ -74,13 +74,13 @@ services:
       # Логирование
       LOG_LEVEL: 'info'
 
-    # Ограничения ресурсов для A100 сервера
-    deploy:
-      resources:
-        limits:
-          memory: 64G  # Выделяем 64GB RAM для Weaviate
-        reservations:
-          memory: 32G  # Резервируем минимум 32GB
+    # # Ограничения ресурсов для A100 сервера
+    # deploy:
+    #   resources:
+    #     limits:
+    #       memory: 64G  # Выделяем 64GB RAM для Weaviate
+    #     reservations:
+    #       memory: 32G  # Резервируем минимум 32GB
 
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/v1/.well-known/ready"]

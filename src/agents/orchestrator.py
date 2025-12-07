@@ -11,6 +11,7 @@ Question types:
 - Hybrid: Complex questions requiring multiple approaches
 """
 
+import os
 from typing import Dict, Any, Optional, AsyncIterator
 from enum import Enum
 import asyncio
@@ -19,6 +20,7 @@ import json
 from openai import AsyncOpenAI
 
 from .code_explorer import CodeExplorerAgent
+from .visual_guide_agent import VisualGuideAgent
 from ..logger import get_logger
 
 
@@ -73,9 +75,10 @@ Question: {question}"""
         self,
         code_explorer: CodeExplorerAgent,
         api_key: str,
-        model: str = "deepseek/deepseek-r1:free",
+        model: Optional[str] = None,
         api_base: str = "https://openrouter.ai/api/v1",
-        document_rag_pipeline=None
+        document_rag_pipeline=None,
+        visual_agent: Optional[VisualGuideAgent] = None
     ):
         """
         Initialize orchestrator.
@@ -83,17 +86,18 @@ Question: {question}"""
         Args:
             code_explorer: Code Explorer Agent instance
             api_key: API key for classification LLM
-            model: Model for classification (lightweight is fine)
+            model: Model for classification (reads from ORCHESTRATOR_MODEL env if None)
             api_base: API base URL
             document_rag_pipeline: Optional RAGPipeline for document questions
+            visual_agent: Optional Visual Guide Agent for visual questions
         """
         self.code_explorer = code_explorer
         self.llm = AsyncOpenAI(api_key=api_key, base_url=api_base)
-        self.model = model
+        self.model = model or os.getenv("ORCHESTRATOR_MODEL", "deepseek/deepseek-r1:free")
 
         # Document RAG pipeline (from src/retrieval.py)
         self.document_rag = document_rag_pipeline
-        self.visual_agent = None  # TODO: Phase 6.2
+        self.visual_agent = visual_agent
 
     async def answer_question(
         self,
@@ -176,6 +180,7 @@ Question: {question}"""
         Returns:
             Dict with type, confidence, reasoning
         """
+        content = None  # Initialize to avoid UnboundLocalError
         try:
             prompt = self.CLASSIFICATION_PROMPT.format(question=question)
 
@@ -188,18 +193,44 @@ Question: {question}"""
 
             content = response.choices[0].message.content
 
-            # Parse JSON
-            classification = json.loads(content)
+            # Extract JSON from response (may be in markdown block or have extra text)
+            # Try to find JSON object in the response
+            import re
+
+            # Remove markdown code blocks if present
+            content = re.sub(r'```json\s*', '', content)
+            content = re.sub(r'```\s*', '', content)
+            content = content.strip()
+
+            # Try to parse JSON directly first
+            try:
+                classification = json.loads(content)
+            except json.JSONDecodeError:
+                # If that fails, try to find and extract JSON object
+                # Use a more robust regex that handles nested objects
+                json_match = re.search(r'\{(?:[^{}]|(?:\{[^{}]*\}))*\}', content, re.DOTALL)
+                if json_match:
+                    content = json_match.group(0)
+                    classification = json.loads(content)
+                else:
+                    raise json.JSONDecodeError("No valid JSON found", content, 0)
 
             # Validate
-            if classification['type'] not in [t.value for t in QuestionType]:
-                logger.warning(f"Invalid question type: {classification['type']}, defaulting to CODE")
-                classification['type'] = QuestionType.CODE
+            if classification.get('type') not in [t.value for t in QuestionType]:
+                logger.warning(f"Invalid question type: {classification.get('type')}, defaulting to CODE")
+                classification['type'] = QuestionType.CODE.value
+                classification['confidence'] = classification.get('confidence', 0.6)
 
             return classification
 
+        except json.JSONDecodeError as e:
+            content_preview = content[:200] if content else "N/A"
+            logger.error(f"JSON parsing failed: {e}. Content: {content_preview}")
+            # Fallback: use keyword-based classification
+            return self._fallback_classification(question)
         except Exception as e:
-            logger.error(f"Classification failed: {e}")
+            content_preview = content[:200] if content else "N/A"
+            logger.error(f"Classification failed: {e}. Content: {content_preview}")
             # Fallback: use keyword-based classification
             return self._fallback_classification(question)
 
@@ -259,13 +290,21 @@ Question: {question}"""
         if stream:
             yield {"type": "status", "message": "Exploring codebase..."}
 
-        result = await self.code_explorer.explore(question, context)
+        # Extract detail_level from context
+        detail_level = context.get('detail_level') if context else None
+
+        result = await self.code_explorer.explore(
+            question=question,
+            context=context,
+            detail_level=detail_level
+        )
 
         yield {
             'success': result['success'],
             'answer': result['answer'],
             'question_type': QuestionType.CODE,
             'agent_used': 'code_explorer',
+            'sources': result.get('sources', []),
             'tool_calls': result.get('tool_calls', []),
             'iterations': result.get('iterations', 0),
         }
@@ -352,16 +391,45 @@ Question: {question}"""
         if stream:
             yield {"type": "status", "message": "Generating visualization..."}
 
-        # TODO: Implement Visual Guide Agent (Phase 6.2)
-        # For now, suggest using Mermaid diagrams from Telegram bot
-        yield {
-            'success': False,
-            'answer': "Visual Guide Agent not yet implemented (Phase 6.2). "
-                     "For now, you can use the /visualize command in the Telegram bot "
-                     "to generate Mermaid diagrams.",
-            'question_type': QuestionType.VISUAL,
-            'agent_used': 'visual_agent_placeholder',
-        }
+        # Check if Visual Agent is available
+        if self.visual_agent is None:
+            yield {
+                'success': False,
+                'answer': "📊 **Visual Guide Agent not configured.**\n\n"
+                         "Visual diagrams require the Visual Agent to be enabled.\n"
+                         "For now, you can use the /visualize command in the Telegram bot "
+                         "to generate Mermaid diagrams.",
+                'question_type': QuestionType.VISUAL,
+                'agent_used': 'visual_agent_unavailable',
+            }
+            return
+
+        try:
+            # Use Visual Guide Agent to create visualization
+            result = await self.visual_agent.create_visualization(question, context)
+
+            yield {
+                'success': result['success'],
+                'answer': result['answer'],
+                'question_type': QuestionType.VISUAL,
+                'agent_used': 'visual_guide_agent',
+                'sources': result.get('sources', []),
+                'diagram_code': result.get('diagram_code', ''),
+                'diagram_url': result.get('diagram_url', ''),
+                'diagram_type': result.get('diagram_type', 'unknown'),
+                'complete': result.get('complete', True),
+            }
+
+        except Exception as e:
+            logger.error(f"Visual Agent error: {e}", exc_info=True)
+            yield {
+                'success': False,
+                'answer': f"❌ **Visualization failed:** {str(e)}\n\n"
+                         "Try rephrasing your question or being more specific.",
+                'question_type': QuestionType.VISUAL,
+                'agent_used': 'visual_guide_agent',
+                'error': str(e),
+            }
 
     async def _handle_hybrid_question(
         self,

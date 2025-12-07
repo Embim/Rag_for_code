@@ -241,7 +241,11 @@ class AgentCache:
 
         # Get embedding for question
         try:
-            question_embedding = self.embedding_model.encode([question])[0]
+            question_embedding = self.embedding_model.encode(
+                [question],
+                show_progress_bar=False,
+                convert_to_numpy=True
+            )[0]
         except Exception as e:
             logger.warning(f"Failed to encode question for semantic cache: {e}")
             return None
@@ -276,7 +280,11 @@ class AgentCache:
             return
 
         try:
-            embedding = self.embedding_model.encode([question])[0]
+            embedding = self.embedding_model.encode(
+                [question],
+                show_progress_bar=False,
+                convert_to_numpy=True
+            )[0]
             self.semantic_cache.append((question, embedding, time.time()))
 
             # Limit size

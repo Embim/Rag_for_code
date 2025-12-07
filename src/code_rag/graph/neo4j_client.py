@@ -66,14 +66,25 @@ class Neo4jClient:
         """Context manager exit."""
         self.close()
 
-    def clear_database(self):
+    def clear_database(self, batch_size: int = 10000):
         """
         Clear all nodes and relationships in the database.
 
         WARNING: This deletes everything! Use with caution.
+
+        Args:
+            batch_size: Number of nodes to delete per transaction
         """
         with self._driver.session(database=self.database) as session:
-            session.run("MATCH (n) DETACH DELETE n")
+            # Use batched delete for better performance on large graphs
+            query = """
+            MATCH (n)
+            CALL {
+                WITH n
+                DETACH DELETE n
+            } IN TRANSACTIONS OF $batch_size ROWS
+            """
+            session.run(query, batch_size=batch_size)
             logger.warning("Database cleared - all nodes and relationships deleted")
 
     def create_indexes(self):
@@ -141,14 +152,15 @@ class Neo4jClient:
                 logger.error(f"Failed to create node {node.id}: {e}")
                 return False
 
-    def create_nodes_batch(self, nodes: List[GraphNode]) -> int:
+    def create_nodes_batch(self, nodes: List[GraphNode], chunk_size: int = 1000) -> int:
         """
-        Create multiple nodes in a batch.
+        Create multiple nodes in batches with chunking.
 
-        More efficient than creating one by one.
+        More efficient than creating one by one, especially for large datasets.
 
         Args:
             nodes: List of nodes to create
+            chunk_size: Number of nodes to process per chunk (default: 1000)
 
         Returns:
             Number of nodes created
@@ -166,20 +178,27 @@ class Neo4jClient:
                         nodes_by_type[node_type] = []
                     nodes_by_type[node_type].append(node.to_dict())
 
-                count = 0
+                total_count = 0
                 for node_type, node_dicts in nodes_by_type.items():
-                    query = f"""
-                    UNWIND $nodes AS node
-                    MERGE (n:{node_type}:GraphNode {{id: node.id}})
-                    SET n = node
-                    """
+                    # Process in chunks
+                    for i in range(0, len(node_dicts), chunk_size):
+                        chunk = node_dicts[i:i + chunk_size]
 
-                    result = session.run(query, nodes=node_dicts)
-                    result.consume()
-                    count += len(node_dicts)
+                        query = f"""
+                        UNWIND $nodes AS node
+                        MERGE (n:{node_type}:GraphNode {{id: node.id}})
+                        SET n = node
+                        """
 
-                logger.info(f"Created {count} nodes in batch")
-                return count
+                        result = session.run(query, nodes=chunk)
+                        result.consume()
+                        total_count += len(chunk)
+
+                        if len(node_dicts) > chunk_size:
+                            logger.info(f"Created {total_count}/{len(node_dicts)} {node_type} nodes")
+
+                logger.info(f"✅ Created {total_count} nodes in total")
+                return total_count
 
             except Exception as e:
                 logger.error(f"Failed to create nodes in batch: {e}")
@@ -224,12 +243,13 @@ class Neo4jClient:
                 )
                 return False
 
-    def create_relationships_batch(self, relationships: List[GraphRelationship]) -> int:
+    def create_relationships_batch(self, relationships: List[GraphRelationship], chunk_size: int = 1000) -> int:
         """
-        Create multiple relationships in a batch.
+        Create multiple relationships in batches with chunking.
 
         Args:
             relationships: List of relationships to create
+            chunk_size: Number of relationships to process per chunk (default: 1000)
 
         Returns:
             Number of relationships created
@@ -247,22 +267,29 @@ class Neo4jClient:
                         rels_by_type[rel_type] = []
                     rels_by_type[rel_type].append(rel.to_dict())
 
-                count = 0
+                total_count = 0
                 for rel_type, rel_dicts in rels_by_type.items():
-                    query = f"""
-                    UNWIND $rels AS rel
-                    MATCH (source:GraphNode {{id: rel.source_id}})
-                    MATCH (target:GraphNode {{id: rel.target_id}})
-                    MERGE (source)-[r:{rel_type}]->(target)
-                    SET r = rel
-                    """
+                    # Process in chunks
+                    for i in range(0, len(rel_dicts), chunk_size):
+                        chunk = rel_dicts[i:i + chunk_size]
 
-                    result = session.run(query, rels=rel_dicts)
-                    result.consume()
-                    count += len(rel_dicts)
+                        query = f"""
+                        UNWIND $rels AS rel
+                        MATCH (source:GraphNode {{id: rel.source_id}})
+                        MATCH (target:GraphNode {{id: rel.target_id}})
+                        MERGE (source)-[r:{rel_type}]->(target)
+                        SET r = rel
+                        """
 
-                logger.info(f"Created {count} relationships in batch")
-                return count
+                        result = session.run(query, rels=chunk)
+                        result.consume()
+                        total_count += len(chunk)
+
+                        if len(rel_dicts) > chunk_size:
+                            logger.info(f"Created {total_count}/{len(rel_dicts)} {rel_type} relationships")
+
+                logger.info(f"✅ Created {total_count} relationships in total")
+                return total_count
 
             except Exception as e:
                 logger.error(f"Failed to create relationships in batch: {e}")

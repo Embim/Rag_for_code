@@ -9,6 +9,10 @@ from pathlib import Path
 from typing import Optional
 import yaml
 from pydantic import BaseModel, Field
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 
 class Neo4jConfig(BaseModel):
@@ -29,9 +33,9 @@ class AgentConfig(BaseModel):
     """Agent configuration."""
     enabled: bool = True
     openrouter_api_key: Optional[str] = None
-    code_explorer_max_iterations: int = 10
-    code_explorer_timeout: int = 120
-    code_explorer_model: str = "anthropic/claude-sonnet-4"
+    code_explorer_max_iterations: int = 20
+    code_explorer_timeout: int = 600
+    code_explorer_model: str = "tngtech/tng-r1t-chimera:free"  # 163k context, enhanced tool-calling
     orchestrator_model: str = "deepseek/deepseek-r1:free"
     cache_enabled: bool = True
     cache_backend: str = "memory"
@@ -106,9 +110,9 @@ class APISettings(BaseModel):
         agent_config = AgentConfig(
             enabled=agents_enabled,
             openrouter_api_key=openrouter_key,
-            code_explorer_max_iterations=config['agents']['code_explorer'].get('max_iterations', 10),
-            code_explorer_timeout=config['agents']['code_explorer'].get('timeout_seconds', 120),
-            code_explorer_model=config['agents']['code_explorer'].get('model', 'anthropic/claude-sonnet-4'),
+            code_explorer_max_iterations=config['agents']['code_explorer'].get('max_iterations', 20),
+            code_explorer_timeout=config['agents']['code_explorer'].get('timeout_seconds', 600),
+            code_explorer_model=config['agents']['code_explorer'].get('model', 'tngtech/tng-r1t-chimera:free'),
             orchestrator_model=config['agents']['orchestrator'].get('model', 'deepseek/deepseek-r1:free'),
             cache_enabled=config['agents']['cache'].get('enabled', True),
             cache_backend=config['agents']['cache'].get('backend', 'memory'),

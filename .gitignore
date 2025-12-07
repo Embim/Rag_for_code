@@ -50,7 +50,7 @@ data/processed/
 
 # Outputs
 outputs/
-
+/data
 !sample_submission.csv
 !websites.csv
 !questions_clean.csv
@@ -58,7 +58,7 @@ outputs/
 
 # Environment variables
 .env
-
+/.claude
 # Docker volumes
 weaviate_data/
 /docs_old

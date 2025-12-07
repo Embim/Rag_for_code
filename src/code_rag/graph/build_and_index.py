@@ -127,8 +127,17 @@ class GraphPipeline:
                      list(repo_info.path.rglob('*.tsx'))
 
         for file_path in code_files:
+            # Skip if not a file (e.g., directories with extensions in name)
+            if not file_path.is_file():
+                continue
+
             # Skip test files and migrations
             if 'test' in file_path.name.lower() or 'migration' in str(file_path):
+                continue
+
+            # Skip node_modules and other vendor directories
+            path_str = str(file_path)
+            if any(skip in path_str for skip in ['node_modules', 'venv', '.venv', 'dist', 'build', '__pycache__']):
                 continue
 
             parser = get_parser(file_path)
@@ -256,6 +265,54 @@ class GraphPipeline:
         """Close all connections."""
         self.neo4j_client.close()
         self.weaviate_indexer.close()
+
+
+def build_and_index(
+    repos_dir: str,
+    neo4j_uri: str = "bolt://localhost:7687",
+    neo4j_user: str = "neo4j",
+    neo4j_password: str = "password",
+    weaviate_url: str = "http://localhost:8080",
+    embedding_model: str = "BAAI/bge-m3",
+    clear_existing: bool = False,
+    link_apis: bool = True,
+    index_weaviate: bool = True
+) -> dict:
+    """
+    Convenience function to build and index a repository.
+
+    Args:
+        repos_dir: Repository path or URL
+        neo4j_uri: Neo4j connection URI
+        neo4j_user: Neo4j username
+        neo4j_password: Neo4j password
+        weaviate_url: Weaviate connection URL
+        embedding_model: Embedding model for Weaviate
+        clear_existing: Whether to clear existing data
+        link_apis: Whether to run API linking
+        index_weaviate: Whether to index in Weaviate
+
+    Returns:
+        Statistics dictionary
+    """
+    pipeline = GraphPipeline(
+        neo4j_uri=neo4j_uri,
+        neo4j_user=neo4j_user,
+        neo4j_password=neo4j_password,
+        weaviate_url=weaviate_url,
+        embedding_model=embedding_model
+    )
+
+    try:
+        stats = pipeline.run(
+            source=repos_dir,
+            clear_existing=clear_existing,
+            link_apis=link_apis,
+            index_weaviate=index_weaviate
+        )
+        return stats
+    finally:
+        pipeline.close()
 
 
 def main():

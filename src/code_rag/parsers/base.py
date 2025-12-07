@@ -55,7 +55,19 @@ class CodeEntity:
     
     # Additional metadata
     metadata: Dict[str, Any] = field(default_factory=dict)
-    
+
+    @property
+    def full_name(self) -> str:
+        """
+        Get the fully qualified name of this entity.
+
+        For methods, this includes the parent class (e.g., 'ClassName.method_name').
+        For standalone entities, this is just the name.
+        """
+        if self.parent:
+            return f"{self.parent}.{self.name}"
+        return self.name
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
         return {

@@ -32,7 +32,6 @@ from src.logger import get_logger
 logger = get_logger(__name__)
 
 
-@register_parser
 class ReactParser(BaseParser):
     """
     Parser for React/TypeScript code.
@@ -62,7 +61,7 @@ class ReactParser(BaseParser):
     ]
 
     def __init__(self, config: Optional[Dict[str, Any]] = None):
-        super().__init__(config)
+        super().__init__()
         self.parser_mode = 'babel'  # 'babel' or 'regex'
         self.babel_parser_path = None
 
@@ -97,6 +96,8 @@ class ReactParser(BaseParser):
                 ['node', str(js_parser_path), '--version'],
                 capture_output=True,
                 text=True,
+                encoding='utf-8',
+                errors='replace',
                 timeout=5
             )
             # If it doesn't error, we're good
@@ -122,14 +123,14 @@ class ReactParser(BaseParser):
         Returns:
             ParseResult with React-specific entities
         """
+        # Determine language early so it's available in error handler
+        ext = file_path.suffix.lower()
+        language = 'typescript' if ext in ['.ts', '.tsx'] else 'javascript'
+
         try:
             # Read file
             with open(file_path, 'r', encoding='utf-8') as f:
                 source = f.read()
-
-            # Determine language
-            ext = file_path.suffix.lower()
-            language = 'typescript' if ext in ['.ts', '.tsx'] else 'javascript'
 
             # Parse based on mode
             if self.parser_mode == 'babel' and self.babel_parser_path:
@@ -159,12 +160,19 @@ class ReactParser(BaseParser):
                 ['node', str(self.babel_parser_path), str(file_path)],
                 capture_output=True,
                 text=True,
+                encoding='utf-8',
+                errors='replace',  # Replace invalid characters instead of crashing
                 timeout=30
             )
 
             if result.returncode != 0:
                 logger.error(f"Babel parser failed: {result.stderr}")
                 # Fallback to regex
+                return self._parse_with_regex(file_path, source, language)
+
+            # Check if stdout is empty
+            if not result.stdout or not result.stdout.strip():
+                logger.error(f"Babel parser returned empty output for {file_path}")
                 return self._parse_with_regex(file_path, source, language)
 
             # Parse JSON result
@@ -207,11 +215,14 @@ class ReactParser(BaseParser):
         except subprocess.TimeoutExpired:
             logger.error(f"Babel parser timed out for {file_path}")
             return self._parse_with_regex(file_path, source, language)
+        except UnicodeDecodeError as e:
+            logger.error(f"Encoding error in Babel parser output for {file_path}: {e}")
+            return self._parse_with_regex(file_path, source, language)
         except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse Babel output: {e}")
+            logger.error(f"Failed to parse Babel output for {file_path}: {e}")
             return self._parse_with_regex(file_path, source, language)
         except Exception as e:
-            logger.error(f"Babel parsing failed: {e}")
+            logger.error(f"Babel parsing failed for {file_path}: {e}")
             return self._parse_with_regex(file_path, source, language)
 
     def _babel_component_to_entity(

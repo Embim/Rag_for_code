@@ -239,6 +239,189 @@ flowchart LR
 
         return "Unknown"
 
+    # ========================================================================
+    # Public API methods (for REST API endpoints)
+    # ========================================================================
+
+    def generate_sequence_diagram(
+        self,
+        entities: List[Dict[str, Any]],
+        title: Optional[str] = None
+    ) -> str:
+        """
+        Generate sequence diagram from entities.
+
+        Args:
+            entities: List of entity dicts with 'name', 'type', 'relationships'
+            title: Optional diagram title
+
+        Returns:
+            Mermaid diagram code
+        """
+        diagram_title = title or "Sequence Diagram"
+        lines = [f"sequenceDiagram"]
+        lines.append(f"    title {diagram_title}")
+
+        # Extract participants (unique entities)
+        participants = set()
+        for entity in entities:
+            participants.add(entity.get('name', 'Unknown'))
+            # Add related entities from relationships
+            for rel in entity.get('relationships', []):
+                if 'target' in rel:
+                    participants.add(rel['target'])
+
+        # Add participant declarations
+        for p in sorted(participants):
+            lines.append(f"    participant {p}")
+
+        # Add interactions based on relationships
+        for entity in entities:
+            source = entity.get('name', 'Unknown')
+            for rel in entity.get('relationships', []):
+                target = rel.get('target', '')
+                rel_type = rel.get('type', 'CALLS')
+                if target and rel_type in ['CALLS', 'USES']:
+                    lines.append(f"    {source}->>{target}: {rel_type}")
+
+        return '\n'.join(lines)
+
+    def generate_component_diagram(
+        self,
+        entities: List[Dict[str, Any]],
+        title: Optional[str] = None
+    ) -> str:
+        """
+        Generate component/class diagram from entities.
+
+        Args:
+            entities: List of entity dicts
+            title: Optional diagram title
+
+        Returns:
+            Mermaid diagram code
+        """
+        diagram_title = title or "Component Diagram"
+        lines = [f"classDiagram"]
+        lines.append(f"    %% {diagram_title}")
+
+        for entity in entities:
+            name = entity.get('name', 'Unknown')
+            entity_type = entity.get('type', 'Class')
+
+            # Add class declaration
+            if entity_type == 'Class':
+                lines.append(f"    class {name}")
+                # Add methods if available
+                if 'methods' in entity:
+                    for method in entity['methods'][:5]:  # Limit to 5
+                        lines.append(f"        +{method}()")
+
+            # Add relationships
+            for rel in entity.get('relationships', []):
+                target = rel.get('target', '')
+                rel_type = rel.get('type', 'USES')
+                if target:
+                    if rel_type == 'INHERITS':
+                        lines.append(f"    {target} <|-- {name}")
+                    elif rel_type == 'USES':
+                        lines.append(f"    {name} --> {target}")
+                    elif rel_type == 'IMPORTS':
+                        lines.append(f"    {name} ..> {target}")
+
+        return '\n'.join(lines)
+
+    def generate_er_diagram(
+        self,
+        entities: List[Dict[str, Any]],
+        title: Optional[str] = None
+    ) -> str:
+        """
+        Generate ER diagram from model entities.
+
+        Args:
+            entities: List of model entities
+            title: Optional diagram title
+
+        Returns:
+            Mermaid diagram code
+        """
+        diagram_title = title or "Entity Relationship Diagram"
+        lines = ["erDiagram"]
+        lines.append(f"    %% {diagram_title}")
+
+        for entity in entities:
+            name = entity.get('name', 'Unknown')
+
+            # Add entity with fields
+            if entity.get('type') == 'Model':
+                fields = entity.get('fields', [])
+                if fields:
+                    lines.append(f"    {name} {{")
+                    for field in fields[:10]:  # Limit to 10 fields
+                        field_name = field.get('name', 'field')
+                        field_type = field.get('type', 'string')
+                        lines.append(f"        {field_type} {field_name}")
+                    lines.append(f"    }}")
+
+            # Add relationships
+            for rel in entity.get('relationships', []):
+                target = rel.get('target', '')
+                rel_type = rel.get('type', 'USES')
+                if target and rel_type in ['USES_MODEL', 'REFERENCES']:
+                    lines.append(f"    {name} ||--o{{ {target} : has")
+
+        return '\n'.join(lines)
+
+    def generate_flowchart(
+        self,
+        entities: List[Dict[str, Any]],
+        title: Optional[str] = None
+    ) -> str:
+        """
+        Generate flowchart from entities.
+
+        Args:
+            entities: List of entities
+            title: Optional diagram title
+
+        Returns:
+            Mermaid diagram code
+        """
+        diagram_title = title or "Flowchart"
+        lines = ["flowchart TD"]
+        lines.append(f"    %% {diagram_title}")
+
+        # Generate nodes for each entity
+        for i, entity in enumerate(entities):
+            name = entity.get('name', f'Entity{i}')
+            entity_type = entity.get('type', 'Unknown')
+            node_id = f"N{i}"
+
+            # Different shapes based on type
+            if entity_type == 'Function':
+                lines.append(f"    {node_id}[{name}]")
+            elif entity_type == 'Class':
+                lines.append(f"    {node_id}[/{name}/]")
+            elif entity_type == 'Model':
+                lines.append(f"    {node_id}[({name})]")
+            else:
+                lines.append(f"    {node_id}[{name}]")
+
+        # Add relationships as edges
+        for i, entity in enumerate(entities):
+            node_id = f"N{i}"
+            for rel in entity.get('relationships', []):
+                target = rel.get('target', '')
+                rel_type = rel.get('type', 'CALLS')
+                # Find target index
+                target_idx = next((j for j, e in enumerate(entities) if e.get('name') == target), None)
+                if target_idx is not None:
+                    target_id = f"N{target_idx}"
+                    lines.append(f"    {node_id} --> |{rel_type}| {target_id}")
+
+        return '\n'.join(lines)
+
     def _render_diagram(self, mermaid_code: str) -> bytes:
         """
         Render Mermaid diagram to PNG using mermaid.ink API.
@@ -266,6 +449,24 @@ flowchart LR
 
             # Return placeholder image
             return self._generate_placeholder_image(str(e))
+
+    def render_to_url(self, mermaid_code: str) -> str:
+        """
+        Generate URL for rendering Mermaid diagram via mermaid.ink.
+
+        Args:
+            mermaid_code: Mermaid diagram code
+
+        Returns:
+            URL to rendered diagram image
+        """
+        try:
+            # Encode diagram for URL
+            encoded = base64.urlsafe_b64encode(mermaid_code.encode('utf-8')).decode('utf-8')
+            return f"{self.MERMAID_INK_URL}{encoded}"
+        except Exception as e:
+            logger.error(f"URL generation failed: {e}")
+            return ""
 
     def _generate_placeholder_image(self, error_msg: str) -> bytes:
         """Generate placeholder image on error."""

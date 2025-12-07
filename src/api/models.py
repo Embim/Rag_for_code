@@ -110,6 +110,14 @@ class AskRequest(BaseModel):
         le=300,
         description="Timeout in seconds"
     )
+    detail_level: Optional[Literal["brief", "normal", "detailed"]] = Field(
+        default="detailed",
+        description="Answer detail level: brief (concise), normal (balanced), detailed (comprehensive)"
+    )
+    verbose: bool = Field(
+        default=False,
+        description="Enable verbose debug mode (includes detailed iteration trace)"
+    )
 
     class Config:
         json_schema_extra = {
@@ -117,7 +125,8 @@ class AskRequest(BaseModel):
                 "question": "Explain the complete checkout flow from UI to database",
                 "context": {"repositories": ["my-frontend", "my-backend"]},
                 "max_iterations": 10,
-                "timeout": 120
+                "timeout": 120,
+                "detail_level": "detailed"
             }
         }
 
@@ -135,6 +144,7 @@ class AskResponse(BaseModel):
     complete: bool = Field(..., description="Whether exploration completed successfully")
     took_ms: float = Field(..., description="Total execution time in ms")
     cached: bool = Field(default=False, description="Whether result came from cache")
+    debug: Optional[Dict[str, Any]] = Field(default=None, description="Debug information (only if verbose=True)")
 
     class Config:
         json_schema_extra = {

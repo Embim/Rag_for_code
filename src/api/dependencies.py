@@ -14,6 +14,7 @@ from ..code_rag.graph import Neo4jClient, WeaviateIndexer
 from ..code_rag.retrieval import CodeRetriever, ScopeDetector
 from ..agents import (
     CodeExplorerAgent,
+    VisualGuideAgent,
     QueryOrchestrator,
     AgentCache,
     AgentConfig as AgentConfigModel,
@@ -134,11 +135,19 @@ async def lifespan_context(app):
                 max_iterations=settings.agents.code_explorer_max_iterations,
                 timeout_seconds=settings.agents.code_explorer_timeout,
                 temperature=0.1,
-                model=settings.agents.code_explorer_model,
+                code_explorer_model=settings.agents.code_explorer_model,
             )
 
             code_explorer = CodeExplorerAgent(
                 tools=tools,
+                api_key=settings.agents.openrouter_api_key,
+                config=agent_config,
+            )
+
+            # Initialize Visual Guide Agent
+            visual_agent = VisualGuideAgent(
+                code_explorer=code_explorer,
+                diagram_generator=app_state.visualizer,
                 api_key=settings.agents.openrouter_api_key,
                 config=agent_config,
             )
@@ -157,6 +166,7 @@ async def lifespan_context(app):
                 code_explorer=code_explorer,
                 api_key=settings.agents.openrouter_api_key,
                 model=settings.agents.orchestrator_model,
+                visual_agent=visual_agent,
             )
 
             logger.info("✅ Agent system initialized")
@@ -169,12 +179,21 @@ async def lifespan_context(app):
         from .auth import create_initial_admin_key
         admin_key = create_initial_admin_key()
         if admin_key:
+            # Log to logger
             logger.info("=" * 80)
             logger.info("🔑 INITIAL ADMIN API KEY CREATED")
             logger.info(f"   API Key: {admin_key}")
             logger.info("   ⚠️  SAVE THIS KEY! It will not be shown again.")
             logger.info("   Use this key to create additional API keys via POST /api/keys")
             logger.info("=" * 80)
+
+            # Also print to console for visibility
+            print("\n" + "=" * 80)
+            print("🔑 INITIAL ADMIN API KEY CREATED")
+            print(f"   API Key: {admin_key}")
+            print("   ⚠️  SAVE THIS KEY! It will not be shown again.")
+            print("   Use this key to create additional API keys via POST /api/keys")
+            print("=" * 80 + "\n")
 
         # Yield control to FastAPI
         yield

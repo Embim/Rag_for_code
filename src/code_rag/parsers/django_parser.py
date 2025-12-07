@@ -28,7 +28,6 @@ from src.logger import get_logger
 logger = get_logger(__name__)
 
 
-@register_parser
 class DjangoParser(BaseParser):
     """
     Parser for Django-specific code.
@@ -41,8 +40,8 @@ class DjangoParser(BaseParser):
     """
 
     def __init__(self, config: Optional[Dict[str, Any]] = None):
-        super().__init__(config)
-        self.python_parser = PythonParser(config)
+        super().__init__()
+        self.python_parser = PythonParser()
 
     def get_supported_extensions(self) -> List[str]:
         """Django uses Python files."""

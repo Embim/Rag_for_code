@@ -43,19 +43,50 @@ router = APIRouter(prefix="/api", tags=["search"])
 
 def _convert_to_search_result(node_dict: dict, score: float = 0.0) -> SearchResult:
     """Convert node dictionary to SearchResult model.
-    
-    Supports both Weaviate nodes (node_id, node_type) and Neo4j nodes (id, type).
+
+    Supports:
+    - Weaviate nodes (node_id, node_type, file_path)
+    - Neo4j nodes (id, type)
+    - Code Explorer sources (id, type, file)
     """
+    # Ensure score is always a valid float (never None)
+    node_score = node_dict.get('score')
+    final_score = node_score if node_score is not None else score
+
+    # Extract entity_id (try different keys)
+    entity_id = (node_dict.get('node_id') or
+                 node_dict.get('entity_id') or
+                 node_dict.get('id', ''))
+
+    # Extract entity_type (try different keys)
+    entity_type = (node_dict.get('node_type') or
+                   node_dict.get('entity_type') or
+                   node_dict.get('type', 'Unknown'))
+
+    # Extract file_path (try different keys and extract from entity_id)
+    file_path = node_dict.get('file_path') or node_dict.get('file', '')
+    if not file_path and entity_id and ':' in entity_id:
+        # Try to extract from entity_id format: "repo:api:path/to/file.py:Function"
+        parts = entity_id.split(':')
+        if len(parts) >= 3:
+            file_path = parts[2]
+
+    # Extract content/code (try different keys)
+    content = (node_dict.get('content') or
+               node_dict.get('body') or
+               node_dict.get('code') or
+               node_dict.get('code_snippet', ''))
+
     return SearchResult(
-        entity_id=node_dict.get('node_id') or node_dict.get('id', ''),
-        entity_type=node_dict.get('node_type') or node_dict.get('type', 'Unknown'),
+        entity_id=entity_id,
+        entity_type=entity_type,
         name=node_dict.get('name', ''),
-        file_path=node_dict.get('file_path', ''),
-        content=node_dict.get('content') or node_dict.get('body', node_dict.get('code', '')),
-        score=node_dict.get('score', score),
+        file_path=file_path,
+        content=content,
+        score=final_score,
         metadata={
             'signature': node_dict.get('signature'),
-            'start_line': node_dict.get('start_line'),
+            'start_line': node_dict.get('start_line') or node_dict.get('line'),
             'end_line': node_dict.get('end_line'),
             'docstring': node_dict.get('docstring'),
             'language': node_dict.get('language'),
@@ -124,7 +155,13 @@ async def search(
             request.strategy or "semantic",
             SearchStrategy.SEMANTIC_ONLY
         )
-        
+
+        # Apply scope filter to config
+        config_override = {
+            'top_k_final': request.limit,
+            'top_k_vector': request.limit * 2,  # Get more candidates for filtering
+        }
+
         # Adjust hybrid_alpha based on strategy alias
         if request.strategy == "bm25":
             config_override['hybrid_alpha'] = 0.0  # BM25 only
@@ -132,12 +169,6 @@ async def search(
             config_override['hybrid_alpha'] = 1.0  # Vector only
         elif request.strategy == "hybrid":
             config_override['hybrid_alpha'] = 0.5  # Balanced hybrid
-
-        # Apply scope filter to config
-        config_override = {
-            'top_k_final': request.limit,
-            'top_k_vector': request.limit * 2,  # Get more candidates for filtering
-        }
 
         # Apply scope-based node type filter
         if detected_scope == "frontend":
@@ -214,6 +245,13 @@ async def ask(
     """
     start_time = time.time()
 
+    # Check if agents are available
+    if not orchestrator:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="AI agents are disabled. Set OPENROUTER_API_KEY environment variable to enable."
+        )
+
     try:
         # Check cache first (exact match)
         cached_result = None
@@ -278,12 +316,28 @@ async def ask(
         context = request.context or {}
         context['max_iterations'] = request.max_iterations or 10
         context['timeout'] = request.timeout or 120
+        context['detail_level'] = request.detail_level or "detailed"
+        context['verbose'] = request.verbose  # Enable debug trace if requested
 
-        result = await orchestrator.answer_question(
+        # Collect result from async generator
+        result = None
+        async for item in orchestrator.answer_question(
             question=request.question,
             context=context,
             stream=False  # TODO: Implement streaming via WebSocket
-        )
+        ):
+            result = item  # Get the final result
+
+        # Extract data from result if it has nested structure
+        if result and result.get('type') == 'result' and 'data' in result:
+            result = result['data']
+
+        # Check if we got a valid result
+        if not result or 'answer' not in result:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Agent failed to produce a valid answer. Result: {result}"
+            )
 
         elapsed_ms = (time.time() - start_time) * 1000
 
@@ -298,7 +352,7 @@ async def ask(
             cache_data = {
                 'question_type': result.get('question_type', 'CODE'),
                 'agent_used': result.get('agent_used', 'code_explorer'),
-                'answer': result['answer'],
+                'answer': result.get('answer', ''),
                 'sources': result.get('sources', []),
                 'iterations_used': result.get('iterations_used', 0),
                 'tools_used': result.get('tools_used', []),
@@ -319,7 +373,8 @@ async def ask(
             tools_used=result.get('tools_used', []),
             complete=result.get('complete', True),
             took_ms=elapsed_ms,
-            cached=False
+            cached=False,
+            debug=result.get('debug')  # Include debug trace if verbose mode was enabled
         )
 
     except HTTPException:

@@ -150,7 +150,7 @@ async def list_repositories(
         MATCH (r:Repository {name: $repo_name})-[:CONTAINS*]->(n)
         RETURN labels(n)[0] as type, count(n) as count
         """
-        stats_results = neo4j.execute_cypher(stats_query, {"repo_name": repo_name})
+        stats_results = neo4j.execute_cypher(stats_query, repo_name=repo_name)
 
         repo_stats = {}
         for stat in stats_results:
@@ -209,7 +209,7 @@ async def add_repository(
     MATCH (r:Repository {name: $name})
     RETURN r
     """
-    existing = neo4j.execute_cypher(query, {"name": request.name})
+    existing = neo4j.execute_cypher(query, name=request.name)
 
     if existing:
         raise HTTPException(
@@ -293,7 +293,7 @@ async def delete_repository(
     MATCH (r:Repository {name: $name})
     RETURN r
     """
-    results = neo4j.execute_cypher(query, {"name": name})
+    results = neo4j.execute_cypher(query, name=name)
 
     if not results:
         raise HTTPException(
@@ -308,7 +308,7 @@ async def delete_repository(
         OPTIONAL MATCH (r)-[:CONTAINS*]->(n)
         DETACH DELETE r, n
         """
-        neo4j.execute_cypher(delete_query, {"name": name})
+        neo4j.execute_cypher(delete_query, name=name)
 
         logger.info(f"Deleted repository '{name}' from Neo4j")
 
@@ -368,7 +368,7 @@ async def reindex_repository(
     MATCH (r:Repository {name: $name})
     RETURN r
     """
-    results = neo4j.execute_cypher(query, {"name": name})
+    results = neo4j.execute_cypher(query, name=name)
 
     if not results:
         raise HTTPException(

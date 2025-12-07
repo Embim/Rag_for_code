@@ -68,7 +68,7 @@ async def visualize(
             MATCH (n:GraphNode {id: $id})
             RETURN n
             """
-            results = neo4j.execute_cypher(query, {"id": entity_id})
+            results = neo4j.execute_cypher(query, id=entity_id)
 
             if not results:
                 raise HTTPException(

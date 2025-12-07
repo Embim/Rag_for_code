@@ -2,6 +2,7 @@
 Search configuration for Code RAG.
 """
 
+import os
 from dataclasses import dataclass, field
 from typing import Optional, List, Literal
 from enum import Enum
@@ -43,23 +44,28 @@ class SearchConfig(BaseConfig):
         file_type_filter: Filter by file extension
         scope_filter: Filter by scope (frontend/backend/shared)
     """
-    # Basic settings
-    top_k: int = 10
-    top_k_dense: int = 50
-    top_k_bm25: int = 50
+    # Basic settings - Increased for better agent exploration
+    top_k: int = 50  # Increased from 10 to 30 for more comprehensive results
+    top_k_dense: int = 100  # Increased from 50 to 100 for better recall
+    top_k_bm25: int = 100  # Increased from 50 to 100 for better recall
     hybrid_alpha: float = 0.7
-    
+
     # Reranking
     enable_reranking: bool = True
-    rerank_top_k: int = 20
-    reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    rerank_top_k: int = 50  # Increased from 20 to 50 for better precision
+    reranker_model: str = field(
+        default_factory=lambda: os.getenv(
+            "RERANKER_MODEL",
+            "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"  # Multilingual by default
+        )
+    )
     
     # Query processing
     enable_query_expansion: bool = False
     enable_query_reformulation: bool = False
     query_reformulation_method: Literal[
         "simple", "expanded", "multi", "rephrase", "decompose", "clarify", "all"
-    ] = "simple"
+    ] = "expanded"
     
     # Fusion
     enable_rrf: bool = True
@@ -71,6 +77,8 @@ class SearchConfig(BaseConfig):
     
     # Filters
     repository_filter: Optional[str] = None
+    repositories: Optional[List[str]] = None  # Multi-repository filter (plural)
+    node_types: Optional[List[str]] = None  # Node type filter
     file_type_filter: Optional[List[str]] = None
     scope_filter: Optional[Literal["frontend", "backend", "shared"]] = None
     
@@ -91,11 +99,11 @@ class SearchConfig(BaseConfig):
             config.max_hops = max(3, self.max_hops)
             config.enable_reranking = True
         elif strategy in (SearchStrategy.UI_TO_DATABASE, SearchStrategy.DATABASE_TO_UI):
-            config.max_hops = 5
+            config.max_hops = 10
             config.enable_reranking = True
         elif strategy == SearchStrategy.IMPACT_ANALYSIS:
-            config.max_hops = 4
-            config.top_k = max(20, self.top_k)
+            config.max_hops = 10
+            config.top_k = max(50, self.top_k)  # Increased from 20 to 50
         
         return config
 

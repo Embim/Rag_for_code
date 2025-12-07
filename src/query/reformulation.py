@@ -12,6 +12,7 @@ Methods:
 - clarify: Clarify ambiguous parts
 """
 
+import os
 import re
 import hashlib
 from typing import List, Optional, Dict, Any, Literal
@@ -31,7 +32,12 @@ class ReformulationConfig:
     """Configuration for query reformulation."""
     enabled: bool = True
     method: ReformulationMethod = "simple"
-    model: str = "deepseek/deepseek-r1:free"
+    model: str = field(
+        default_factory=lambda: os.getenv(
+            "QUERY_REFORMULATION_MODEL",
+            "tngtech/tng-r1t-chimera:free"
+        )
+    )
     max_tokens: int = 500
     temperature: float = 0.3
     use_cache: bool = True
@@ -218,14 +224,22 @@ class QueryReformulator:
         """Clean LLM response from reasoning tags."""
         if not text:
             return text
-        
+
+        original_text = text
+
         # Remove thinking/reasoning tags
         text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL | re.IGNORECASE)
         text = re.sub(r'<reasoning>.*?</reasoning>', '', text, flags=re.DOTALL | re.IGNORECASE)
-        
+
         # Clean whitespace
         text = text.strip()
-        
+
+        # Validation: ensure reformulated query is reasonable
+        # If result is too short (< 3 chars) or just punctuation, return empty
+        if len(text) < 3 or text.replace('.', '').replace(',', '').strip() == '':
+            logger.warning(f"Query reformulation produced invalid result: '{text}' from '{original_text[:100]}'")
+            return ""
+
         return text
     
     def reformulate(

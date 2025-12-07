@@ -59,8 +59,8 @@ class GraphNode:
 
     # Core fields
     id: str  # Unique identifier (e.g., "repo:django/models.py:Product")
-    type: NodeType
     name: str
+    type: Optional[NodeType] = None
 
     # Metadata
     created_at: datetime = field(default_factory=datetime.now)
@@ -69,11 +69,42 @@ class GraphNode:
     # Additional properties (extensible)
     properties: Dict[str, Any] = field(default_factory=dict)
 
+    def extract_metadata_from_id(self):
+        """
+        Extract repository and file_path from node ID.
+
+        ID format: repo:repository_name:file/path.py:ClassName.method_name
+        Example: repo:api:app/backend/booking.py:TradeUploader.book_trade
+        """
+        if not self.id or not self.id.startswith('repo:'):
+            return
+
+        # Split by colons, but preserve path
+        parts = self.id.split(':', 3)  # ['repo', 'api', 'app/backend/booking.py', 'TradeUploader.book_trade']
+
+        if len(parts) >= 3:
+            repository = parts[1]
+
+            # Extract file path (part before last colon)
+            if len(parts) >= 4:
+                file_path = parts[2]
+            else:
+                file_path = parts[2]
+
+            # Update properties
+            if 'repository' not in self.properties:
+                self.properties['repository'] = repository
+            if 'file_path' not in self.properties:
+                self.properties['file_path'] = file_path
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert node to dictionary for Neo4j."""
+        # Extract metadata from ID before converting
+        self.extract_metadata_from_id()
+
         return {
             'id': self.id,
-            'type': self.type.value,
+            'type': self.type.value if self.type else 'Unknown',
             'name': self.name,
             'created_at': self.created_at.isoformat(),
             'updated_at': self.updated_at.isoformat(),

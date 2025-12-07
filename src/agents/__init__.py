@@ -15,6 +15,7 @@ Main components:
 """
 
 from .code_explorer import CodeExplorerAgent
+from .visual_guide_agent import VisualGuideAgent
 from ..config.agent import AgentConfig
 from .orchestrator import QueryOrchestrator, QuestionType
 from .cache import AgentCache, CacheConfig
@@ -34,6 +35,7 @@ from .tools import (
 
 __all__ = [
     'CodeExplorerAgent',
+    'VisualGuideAgent',
     'AgentConfig',
     'QueryOrchestrator',
     'QuestionType',

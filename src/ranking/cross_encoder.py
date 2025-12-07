@@ -4,10 +4,11 @@ Cross-Encoder Reranker for neural reranking of search results.
 100x faster than LLM reranking with comparable quality.
 """
 
+import os
 import pandas as pd
 import numpy as np
 from typing import List, Tuple, Optional
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from ..logger import get_logger
 
@@ -20,7 +21,12 @@ _cross_encoder_model = None
 @dataclass
 class RerankerConfig:
     """Configuration for cross-encoder reranker."""
-    model_name: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    model_name: str = field(
+        default_factory=lambda: os.getenv(
+            "RERANKER_MODEL",
+            "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"  # Multilingual by default
+        )
+    )
     max_length: int = 512
     batch_size: int = 32
     device: Optional[str] = None  # auto-detect
@@ -43,19 +49,22 @@ class CrossEncoderReranker:
     
     def __init__(
         self,
-        model_name: str = "cross-encoder/ms-marco-MiniLM-L-6-v2",
+        model_name: Optional[str] = None,
         max_length: int = 512,
         device: Optional[str] = None
     ):
         """
         Initialize reranker.
-        
+
         Args:
-            model_name: HuggingFace model name
+            model_name: HuggingFace model name (reads from RERANKER_MODEL env if None)
             max_length: Maximum sequence length
             device: Device (cpu/cuda/auto)
         """
-        self.model_name = model_name
+        self.model_name = model_name or os.getenv(
+            "RERANKER_MODEL",
+            "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"
+        )
         self.max_length = max_length
         self.device = device
         self._model = None
@@ -199,10 +208,19 @@ class CrossEncoderReranker:
 
 
 # Backward compatibility alias
-def get_reranker(model_name: str = "cross-encoder/ms-marco-MiniLM-L-6-v2") -> CrossEncoderReranker:
-    """Get or create singleton reranker instance."""
+def get_reranker(model_name: Optional[str] = None) -> CrossEncoderReranker:
+    """
+    Get or create singleton reranker instance.
+
+    Args:
+        model_name: Model name (reads from RERANKER_MODEL env if None)
+    """
     global _cross_encoder_model
-    if _cross_encoder_model is None or _cross_encoder_model.model_name != model_name:
-        _cross_encoder_model = CrossEncoderReranker(model_name)
+    actual_model = model_name or os.getenv(
+        "RERANKER_MODEL",
+        "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"
+    )
+    if _cross_encoder_model is None or _cross_encoder_model.model_name != actual_model:
+        _cross_encoder_model = CrossEncoderReranker(actual_model)
     return _cross_encoder_model
 

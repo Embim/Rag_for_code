@@ -72,18 +72,32 @@ class SemanticSearchTool(Tool):
         self.retriever = retriever
         self.scope_detector = ScopeDetector()
 
-    async def execute(self, query: str, scope: Optional[str] = None, top_k: int = 10) -> Dict[str, Any]:
+    async def execute(
+        self,
+        query: str,
+        scope: Optional[str] = None,
+        top_k: int = 50,  # Increased from 10 to 50 for more comprehensive results
+        repositories: Optional[List[str]] = None,
+        repo: Optional[str] = None,
+        **kwargs
+    ) -> Dict[str, Any]:
         """
         Args:
             query: What to search for
             scope: Optional scope hint (frontend/backend/hybrid)
-            top_k: Number of results to return
+            top_k: Number of results to return (default: 50 for agent exploration)
+            repositories: Optional list of repository names to filter by
+            repo: Alias for a single repository (converted to list)
         """
         try:
             # Detect scope if not provided
             if not scope:
                 scope_hint = self.scope_detector.detect_scope(query)
                 scope = scope_hint.scope.value
+
+            # Handle repo parameter (single repo as alias for repositories)
+            if repo and not repositories:
+                repositories = [repo]
 
             # Determine strategy
             query_lower = query.lower()
@@ -100,6 +114,10 @@ class SemanticSearchTool(Tool):
                 'top_k_final': top_k,
                 'expand_results': False,  # Just semantic search
             }
+
+            # Add repository filter if provided
+            if repositories:
+                config_override['repositories'] = repositories
 
             search_result = self.retriever.search(
                 query=query,
@@ -154,29 +172,49 @@ class ExactSearchTool(Tool):
         )
         self.neo4j = neo4j_client
 
-    async def execute(self, name: str, entity_type: Optional[str] = None) -> Dict[str, Any]:
+    async def execute(
+        self,
+        name: Optional[str] = None,
+        entity_name: Optional[str] = None,
+        query: Optional[str] = None,
+        entity_type: Optional[str] = None,
+        **kwargs
+    ) -> Dict[str, Any]:
         """
         Args:
-            name: Exact name of entity
+            name: Exact name of entity (preferred)
+            entity_name: Alias for name
+            query: Alias for name
             entity_type: Optional type filter (Function, Class, Component, etc.)
         """
         try:
+            # Try to extract entity name from various parameter names
+            entity_search_name = name or entity_name or query
+
+            if not entity_search_name:
+                return {
+                    'success': False,
+                    'result': None,
+                    'error': 'Missing required parameter: name, entity_name, or query must be provided',
+                }
+
+
             # Build Cypher query
             if entity_type:
                 cypher = """
                 MATCH (e {name: $name})
                 WHERE $entity_type IN labels(e)
                 RETURN e, labels(e) as types
-                LIMIT 10
+                LIMIT 30
                 """
-                params = {'name': name, 'entity_type': entity_type}
+                params = {'name': entity_search_name, 'entity_type': entity_type}
             else:
                 cypher = """
                 MATCH (e {name: $name})
                 RETURN e, labels(e) as types
-                LIMIT 10
+                LIMIT 30
                 """
-                params = {'name': name}
+                params = {'name': entity_search_name}
 
             results = self.neo4j.execute_cypher(cypher, parameters=params)
 
@@ -184,18 +222,18 @@ class ExactSearchTool(Tool):
             for record in results:
                 node = record['e']
                 entities.append({
-                    'id': node.element_id,
+                    'id': node.get('id', node.element_id),
                     'name': node.get('name', 'Unknown'),
                     'type': record['types'][0] if record['types'] else 'Unknown',
-                    'file': node.get('file', 'Unknown'),
-                    'line': node.get('line', None),
+                    'file': node.get('file_path', node.get('file', 'Unknown')),
+                    'line': node.get('start_line', node.get('line', None)),
                     'code': node.get('code', ''),
                 })
 
             return {
                 'success': True,
                 'result': {
-                    'name_searched': name,
+                    'name_searched': entity_search_name,
                     'entity_type': entity_type,
                     'entities_found': len(entities),
                     'entities': entities,
@@ -227,27 +265,59 @@ class GetEntityDetailsTool(Tool):
         )
         self.neo4j = neo4j_client
 
-    async def execute(self, entity_id: str) -> Dict[str, Any]:
+    async def execute(
+        self,
+        entity_id: Optional[str] = None,
+        id: Optional[str] = None,
+        name: Optional[str] = None,
+        entity_name: Optional[str] = None,
+        **kwargs
+    ) -> Dict[str, Any]:
         """
         Args:
-            entity_id: Neo4j element ID
+            entity_id: Entity ID in format "repo:name:path:entity" (from semantic_search)
+            id: Alias for entity_id
+            name: Entity name (fallback if ID not provided)
+            entity_name: Alias for name
         """
         try:
+            # Try to extract entity identifier from various parameter names
+            identifier = entity_id or id or name or entity_name
+
+            if not identifier:
+                return {
+                    'success': False,
+                    'result': None,
+                    'error': 'Missing required parameter: entity_id, id, or name must be provided',
+                }
+
+            # Try to find by custom ID field (e.id) - used by semantic_search
             cypher = """
             MATCH (e)
-            WHERE elementId(e) = $entity_id
+            WHERE e.id = $entity_id
             OPTIONAL MATCH (e)-[r]->(related)
             RETURN e, labels(e) as types,
                    collect({type: type(r), target: related.name}) as relationships
+            LIMIT 1
             """
+            results = list(self.neo4j.execute_cypher(cypher, parameters={'entity_id': identifier}))
 
-            results = list(self.neo4j.execute_cypher(cypher, parameters={'entity_id': entity_id}))
+            # Fallback: try searching by name if not found by ID
+            if not results:
+                cypher = """
+                MATCH (e {name: $name})
+                OPTIONAL MATCH (e)-[r]->(related)
+                RETURN e, labels(e) as types,
+                       collect({type: type(r), target: related.name}) as relationships
+                LIMIT 1
+                """
+                results = list(self.neo4j.execute_cypher(cypher, parameters={'name': identifier}))
 
             if not results:
                 return {
                     'success': False,
                     'result': None,
-                    'error': f'Entity not found: {entity_id}',
+                    'error': f'Entity not found: {identifier}',
                 }
 
             record = results[0]
@@ -256,14 +326,17 @@ class GetEntityDetailsTool(Tool):
             return {
                 'success': True,
                 'result': {
-                    'id': entity_id,
-                    'name': node.get('name', 'Unknown'),
-                    'type': record['types'][0] if record['types'] else 'Unknown',
-                    'file': node.get('file', 'Unknown'),
-                    'line': node.get('line', None),
-                    'code': node.get('code', ''),
-                    'docstring': node.get('docstring', ''),
-                    'relationships': record['relationships'],
+                    'entities_found': 1,
+                    'entities': [{
+                        'id': node.get('id', identifier),
+                        'name': node.get('name', 'Unknown'),
+                        'type': record['types'][0] if record['types'] else 'Unknown',
+                        'file': node.get('file_path', node.get('file', 'Unknown')),
+                        'line': node.get('start_line', node.get('line', None)),
+                        'code': node.get('code', ''),
+                        'docstring': node.get('docstring', ''),
+                        'relationships': record['relationships'],
+                    }],
                 },
                 'error': None,
             }
@@ -294,30 +367,47 @@ class GetRelatedEntitiesTool(Tool):
 
     async def execute(
         self,
-        entity_id: str,
+        entity_id: Optional[str] = None,
+        id: Optional[str] = None,
+        name: Optional[str] = None,
+        entity_name: Optional[str] = None,
         relation_type: Optional[str] = None,
-        direction: str = 'outgoing'
+        direction: str = 'outgoing',
+        **kwargs
     ) -> Dict[str, Any]:
         """
         Args:
-            entity_id: Source entity ID
+            entity_id: Source entity ID in format "repo:name:path:entity" (from semantic_search)
+            id: Alias for entity_id
+            name: Entity name (fallback if ID not provided)
+            entity_name: Alias for name
             relation_type: Optional filter (CALLS, IMPORTS, USES_MODEL, etc.)
             direction: 'outgoing' or 'incoming'
         """
         try:
-            # Build Cypher based on direction
+            # Try to extract entity identifier from various parameter names
+            identifier = entity_id or id or name or entity_name
+
+            if not identifier:
+                return {
+                    'success': False,
+                    'result': None,
+                    'error': 'Missing required parameter: entity_id, id, or name must be provided',
+                }
+
+            # Build Cypher based on direction - use e.id instead of elementId(e)
             if direction == 'outgoing':
                 if relation_type:
                     cypher = """
                     MATCH (e)-[r:%s]->(related)
-                    WHERE elementId(e) = $entity_id
+                    WHERE e.id = $entity_id
                     RETURN related, type(r) as rel_type, labels(related) as types
                     LIMIT 50
                     """ % relation_type
                 else:
                     cypher = """
                     MATCH (e)-[r]->(related)
-                    WHERE elementId(e) = $entity_id
+                    WHERE e.id = $entity_id
                     RETURN related, type(r) as rel_type, labels(related) as types
                     LIMIT 50
                     """
@@ -325,39 +415,39 @@ class GetRelatedEntitiesTool(Tool):
                 if relation_type:
                     cypher = """
                     MATCH (related)-[r:%s]->(e)
-                    WHERE elementId(e) = $entity_id
+                    WHERE e.id = $entity_id
                     RETURN related, type(r) as rel_type, labels(related) as types
                     LIMIT 50
                     """ % relation_type
                 else:
                     cypher = """
                     MATCH (related)-[r]->(e)
-                    WHERE elementId(e) = $entity_id
+                    WHERE e.id = $entity_id
                     RETURN related, type(r) as rel_type, labels(related) as types
                     LIMIT 50
                     """
 
-            results = self.neo4j.execute_cypher(cypher, parameters={'entity_id': entity_id})
+            results = self.neo4j.execute_cypher(cypher, parameters={'entity_id': identifier})
 
             entities = []
             for record in results:
                 node = record['related']
                 entities.append({
-                    'id': node.element_id,
+                    'id': node.get('id', node.element_id),
                     'name': node.get('name', 'Unknown'),
                     'type': record['types'][0] if record['types'] else 'Unknown',
                     'relationship': record['rel_type'],
-                    'file': node.get('file', 'Unknown'),
+                    'file': node.get('file_path', node.get('file', 'Unknown')),
                 })
 
             return {
                 'success': True,
                 'result': {
-                    'entity_id': entity_id,
+                    'entity_id': identifier,
                     'relation_type': relation_type,
                     'direction': direction,
-                    'related_count': len(entities),
-                    'related_entities': entities,
+                    'entities_found': len(entities),
+                    'entities': entities,
                 },
                 'error': None,
             }
@@ -385,20 +475,47 @@ class ListFilesTool(Tool):
         )
         self.repos_dir = repos_dir
 
-    async def execute(self, directory: str = '', pattern: str = '*') -> Dict[str, Any]:
+    async def execute(self, directory: str = '', pattern: str = '*', path: str = None, **kwargs) -> Dict[str, Any]:
         """
         Args:
             directory: Relative path from repos directory
             pattern: Glob pattern (e.g., '*.py', '**/*.tsx')
+            path: Alias for directory (for backward compatibility)
         """
         try:
-            target_dir = self.repos_dir / directory
+            # Support both 'path' and 'directory' parameters
+            dir_to_use = path if path is not None else directory
+
+            # Sanitize path: remove leading slashes, backslashes, and dangerous patterns
+            dir_to_use = str(dir_to_use).lstrip('/\\').replace('..', '')
+
+            # Reject system directories
+            dangerous_patterns = ['$Recycle.Bin', 'System Volume Information', 'Windows', 'Program Files']
+            if any(pattern in dir_to_use for pattern in dangerous_patterns):
+                return {
+                    'success': False,
+                    'result': None,
+                    'error': f'Access denied: cannot list system directories',
+                }
+
+            target_dir = self.repos_dir / dir_to_use
+
+            # Ensure the target directory is within repos_dir
+            try:
+                target_dir = target_dir.resolve()
+                target_dir.relative_to(self.repos_dir.resolve())
+            except ValueError:
+                return {
+                    'success': False,
+                    'result': None,
+                    'error': f'Access denied: path must be within repository directory',
+                }
 
             if not target_dir.exists():
                 return {
                     'success': False,
                     'result': None,
-                    'error': f'Directory not found: {directory}',
+                    'error': f'Directory not found: {dir_to_use}',
                 }
 
             # List files matching pattern
@@ -421,7 +538,7 @@ class ListFilesTool(Tool):
             return {
                 'success': True,
                 'result': {
-                    'directory': directory,
+                    'directory': dir_to_use,
                     'pattern': pattern,
                     'files_found': len(file_list),
                     'files': file_list,
@@ -457,7 +574,8 @@ class ReadFileTool(Tool):
         self,
         path: str,
         start_line: Optional[int] = None,
-        end_line: Optional[int] = None
+        end_line: Optional[int] = None,
+        **kwargs
     ) -> Dict[str, Any]:
         """
         Args:
@@ -472,7 +590,7 @@ class ReadFileTool(Tool):
                 return {
                     'success': False,
                     'result': None,
-                    'error': f'File not found: {path}',
+                    'error': f'File not found: {path}. Note: Physical files may not be available - use semantic_search or get_entity_details to get code instead.',
                 }
 
             # Read file
@@ -523,7 +641,7 @@ class GrepTool(Tool):
         )
         self.neo4j = neo4j_client
 
-    async def execute(self, pattern: str, scope: Optional[str] = None) -> Dict[str, Any]:
+    async def execute(self, pattern: str, scope: Optional[str] = None, **kwargs) -> Dict[str, Any]:
         """
         Args:
             pattern: Regex pattern to search
@@ -586,7 +704,7 @@ class GetGraphPathTool(Tool):
         )
         self.neo4j = neo4j_client
 
-    async def execute(self, from_entity: str, to_entity: str, max_depth: int = 5) -> Dict[str, Any]:
+    async def execute(self, from_entity: str, to_entity: str, max_depth: int = 5, **kwargs) -> Dict[str, Any]:
         """
         Args:
             from_entity: Source entity ID or name

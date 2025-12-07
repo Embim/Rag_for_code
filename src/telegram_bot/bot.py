@@ -116,16 +116,16 @@ class CodeRAGBot:
             neo4j_client=neo4j_client,
             weaviate_indexer=weaviate_indexer,
             llm_client=self.llm_client,
-            config={'model': 'deepseek/deepseek-r1:free'}
+            config={'model': os.getenv('ANALYSIS_MODEL', 'tngtech/tng-r1t-chimera:free')}
         )
         logger.info("✅ Traceback analyzer initialized")
-        
+
         # Initialize business agent (for business users)
         self.business_agent = BusinessAgent(
             screenshot_service=None,  # Will be set later if configured
             retriever=self.retriever,
             llm_client=self.llm_client,
-            config={'model': 'deepseek/deepseek-r1:free'}
+            config={'model': os.getenv('ANALYSIS_MODEL', 'tngtech/tng-r1t-chimera:free')}
         )
         logger.info("✅ Business agent initialized")
 
@@ -150,10 +150,10 @@ class CodeRAGBot:
 
                 # Initialize Code Explorer Agent
                 agent_config = AgentConfig(
-                    max_iterations=10,
-                    timeout_seconds=120,
+                    max_iterations=int(os.getenv('AGENT_MAX_ITERATIONS', '15')),
+                    timeout_seconds=float(os.getenv('AGENT_TIMEOUT', '180')),
                     temperature=0.1,
-                    model="anthropic/claude-sonnet-4",
+                    model=os.getenv('CODE_EXPLORER_MODEL', 'tngtech/tng-r1t-chimera:free'),
                 )
 
                 code_explorer = CodeExplorerAgent(
@@ -175,7 +175,7 @@ class CodeRAGBot:
                 self.orchestrator = QueryOrchestrator(
                     code_explorer=code_explorer,
                     api_key=openrouter_api_key,
-                    model="deepseek/deepseek-r1:free",
+                    model=os.getenv('ORCHESTRATOR_MODEL', 'deepseek/deepseek-r1:free'),
                 )
 
                 logger.info("✅ Agent system initialized")

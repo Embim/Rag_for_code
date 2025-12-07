@@ -25,8 +25,15 @@ from .dependencies import lifespan_context
 from .models import ErrorResponse
 from .routes import search, repos, diagnostics, visualize, auth, reindex
 from .auth import create_initial_admin_key
-from ..logger import get_logger
+from ..logger import get_logger, setup_logging
+import os
 
+
+# Initialize logging
+setup_logging(
+    level=os.getenv("LOG_LEVEL", "INFO"),
+    enable_console=True
+)
 
 logger = get_logger(__name__)
 
@@ -91,7 +98,7 @@ def create_app() -> FastAPI:
                 error="InternalServerError",
                 message="An unexpected error occurred",
                 details={"exception": str(exc)}
-            ).model_dump()
+            ).model_dump(mode='json')  # Serialize datetime to string
         )
 
     # ========================================================================

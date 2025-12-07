@@ -11,7 +11,7 @@ neo4j:
   uri: "bolt://localhost:7687"
   user: "neo4j"
   password: "${NEO4J_PASSWORD}"  # From environment variable
-  database: "code_rag"
+  database: "neo4j"  # Default database
 
 # Embedding model
 embedding:
@@ -27,8 +27,8 @@ llm:
   # API mode (OpenRouter)
   api:
     provider: "openrouter"
-    model: "tngtech/deepseek-r1t2-chimera:free"
-    max_tokens: 32768
+    model: "tngtech/tng-r1t-chimera:free"  # Enhanced tool-calling, 163k context
+    max_tokens: 150000  # Increased for longer context (max 163840)
     max_workers: 10
     timeout: 60
     retries: 3
@@ -64,11 +64,11 @@ directories:
 agents:
   # Code Explorer Agent
   code_explorer:
-    max_iterations: 10  # Maximum tool calls per question
-    timeout_seconds: 120  # Overall timeout
-    max_tokens_per_call: 4096
+    max_iterations: 20  # Maximum tool calls per question (increased to 20 for complex queries)
+    timeout_seconds: 600  # Overall timeout (10 minutes for slow free models)
+    max_tokens_per_call: 8192  # Increased for large context models
     temperature: 0.1
-    model: "anthropic/claude-sonnet-4"  # Best reasoning model
+    model: "tngtech/tng-r1t-chimera:free"  # 163k context, enhanced tool-calling, reasoning, FREE!
 
   # Query Orchestrator
   orchestrator:

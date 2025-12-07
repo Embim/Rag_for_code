@@ -13,6 +13,7 @@ from typing import List, Dict, Any, Optional, Tuple
 from sentence_transformers import SentenceTransformer
 import weaviate
 from weaviate.classes.config import Configure, Property, DataType
+from weaviate.classes.query import Filter
 
 from .models import GraphNode, NodeType
 from .neo4j_client import Neo4jClient
@@ -374,26 +375,34 @@ class WeaviateIndexer:
         collection = self.client.collections.get("CodeNode")
 
         # Generate query embedding
-        query_vector = self.embedding_model.encode(query, convert_to_numpy=True).tolist()
+        query_vector = self.embedding_model.encode(
+            query,
+            show_progress_bar=False,
+            convert_to_numpy=True
+        ).tolist()
 
         # Build filter if node types specified
         where_filter = None
         if node_types:
-            where_filter = {
-                "path": ["node_type"],
-                "operator": "ContainsAny",
-                "valueTextArray": node_types
-            }
+            where_filter = Filter.by_property("node_type").contains_any(node_types)
 
         # Perform hybrid search
         try:
-            response = collection.query.hybrid(
-                query=query,
-                vector=query_vector,
-                alpha=alpha,
-                limit=limit,
-                where=where_filter
-            )
+            if where_filter:
+                response = collection.query.hybrid(
+                    query=query,
+                    vector=query_vector,
+                    alpha=alpha,
+                    limit=limit,
+                    filters=where_filter
+                )
+            else:
+                response = collection.query.hybrid(
+                    query=query,
+                    vector=query_vector,
+                    alpha=alpha,
+                    limit=limit
+                )
 
             # Format results
             results = []
@@ -403,6 +412,7 @@ class WeaviateIndexer:
                     'node_type': obj.properties.get('node_type'),
                     'name': obj.properties.get('name'),
                     'file_path': obj.properties.get('file_path'),
+                    'repository': obj.properties.get('repository'),  # ✅ Добавлено поле repository
                     'content': obj.properties.get('content'),
                     'score': obj.metadata.score if hasattr(obj.metadata, 'score') else 0.0,
                     'metadata': json.loads(obj.properties.get('metadata', '{}'))
@@ -432,11 +442,7 @@ class WeaviateIndexer:
             type_counts = {}
             for node_type in NodeType:
                 response = collection.aggregate.over_all(
-                    filters={
-                        "path": ["node_type"],
-                        "operator": "Equal",
-                        "valueText": node_type.value
-                    },
+                    filters=Filter.by_property("node_type").equal(node_type.value),
                     total_count=True
                 )
                 type_counts[node_type.value] = response.total_count

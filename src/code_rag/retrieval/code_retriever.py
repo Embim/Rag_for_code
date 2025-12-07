@@ -52,9 +52,9 @@ class SearchConfig:
     hybrid_alpha: float = 0.3  # 0.0 = BM25 only, 1.0 = vector only
 
     # Phase 4: Advanced search features
-    enable_query_expansion: bool = True
+    enable_query_expansion: bool = False  # Disabled by default (can break queries)
     query_expansion_method: str = "synonyms"  # "synonyms", "llm", "hybrid"
-    enable_query_reformulation: bool = True
+    enable_query_reformulation: bool = False  # Disabled by default (breaks queries: 'book new trades' -> 'm')
     query_reformulation_method: str = "simple"  # "simple", "expanded", "multi", "rephrase", "decompose", "clarify", "all"
     enable_reranking: bool = True
     reranker_type: str = "cross_encoder"  # "cross_encoder", "llm", "none"
@@ -221,12 +221,13 @@ class CodeRetriever:
         working_query = query
         if self.query_reformulator and config.enable_query_reformulation:
             try:
-                reformulated_variants = self.query_reformulator.reformulate(
+                reformulated_query = self.query_reformulator.reformulate(
                     query,
                     method=config.query_reformulation_method
                 )
-                if len(reformulated_variants) > 1:
-                    working_query = reformulated_variants[1]  # Use first reformulated variant
+                # reformulate() returns a single string, not a list
+                if reformulated_query and reformulated_query.strip():
+                    working_query = reformulated_query
                     logger.info(f"Query reformulated: '{query}' -> '{working_query}'")
             except Exception as e:
                 logger.warning(f"Query reformulation failed: {e}")
@@ -235,7 +236,8 @@ class CodeRetriever:
         primary_nodes = self._initial_search(working_query, config)
 
         if not primary_nodes:
-            logger.warning(f"No results found for query: '{query}'")
+            logger.warning(f"No results found for query: '{query}' (working query: '{working_query}')")
+            logger.warning(f"Search config: repositories={config.repositories}, node_types={config.node_types}")
             return SearchResult(
                 strategy_used=strategy.value,
                 execution_time_ms=(time.time() - start_time) * 1000
@@ -328,9 +330,9 @@ class CodeRetriever:
             queries = [query]
             if self.query_expander and config.enable_query_expansion:
                 try:
-                    expanded = self.query_expander.expand_query(
+                    expanded = self.query_expander.expand(
                         query,
-                        method=config.query_expansion_method
+                        max_expansions=5
                     )
                     # Take top 3 variants to balance quality vs speed
                     queries = expanded[:3]
@@ -351,12 +353,23 @@ class CodeRetriever:
                         alpha=config.hybrid_alpha
                     )
 
+                    logger.info(f"Weaviate returned {len(results)} results for query '{q}'")
+
                     # Filter by repository if specified
                     if config.repositories:
+                        # Flatten repositories list if nested (e.g., [['ui', 'api']] -> ['ui', 'api'])
+                        repos = config.repositories
+                        if repos and isinstance(repos[0], list):
+                            repos = repos[0]
+                            logger.warning(f"Flattened nested repositories list: {config.repositories} -> {repos}")
+
+                        logger.info(f"Filtering by repositories: {repos}")
+                        before_count = len(results)
                         results = [
                             r for r in results
-                            if r.get('repository') in config.repositories
+                            if r.get('repository') in repos
                         ]
+                        logger.info(f"After repository filter: {before_count} -> {len(results)} results")
 
                     all_results.append(results)
                 except Exception as e:
@@ -364,6 +377,15 @@ class CodeRetriever:
                     continue
 
             if not all_results:
+                logger.warning("all_results is empty - no queries returned results")
+                return []
+
+            # Check if all result sets are empty
+            total_results = sum(len(res) for res in all_results)
+            logger.info(f"Total results across {len(all_results)} queries: {total_results}")
+
+            if total_results == 0:
+                logger.warning("All result sets are empty")
                 return []
 
             # Phase 4: Combine results with RRF if enabled
