@@ -51,8 +51,16 @@ def get_parser(file_path: Path, framework: Optional[str] = None):
         elif framework == 'fastapi':
             return FastAPIParser()
         else:
-            # Default to Python parser
-            return PythonParser()
+            # Auto-detect framework from file content
+            detected_framework = _detect_python_framework(file_path)
+
+            if detected_framework == 'django':
+                return DjangoParser()
+            elif detected_framework == 'fastapi':
+                return FastAPIParser()
+            else:
+                # Default to Python parser
+                return PythonParser()
 
     # JavaScript/TypeScript files
     elif extension in {'.js', '.jsx', '.ts', '.tsx'}:
@@ -64,6 +72,59 @@ def get_parser(file_path: Path, framework: Optional[str] = None):
 
     else:
         # Unsupported file type, return None or base parser
+        return None
+
+
+def _detect_python_framework(file_path: Path) -> Optional[str]:
+    """
+    Auto-detect Python framework from file content.
+
+    Returns:
+        'django', 'fastapi', or None
+    """
+    try:
+        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+            # Read first 5000 characters for detection
+            content = f.read(5000)
+
+            # Check for Django imports
+            django_indicators = [
+                'from django.',
+                'import django',
+                'from rest_framework',
+                'import rest_framework',
+                '@api_view',
+                'APIView',
+                'ViewSet',
+                'ModelSerializer',
+            ]
+
+            # Check for FastAPI imports
+            fastapi_indicators = [
+                'from fastapi',
+                'import fastapi',
+                'FastAPI(',
+                '@app.get',
+                '@app.post',
+                '@router.get',
+                '@router.post',
+                'APIRouter',
+            ]
+
+            # Count indicators
+            django_score = sum(1 for indicator in django_indicators if indicator in content)
+            fastapi_score = sum(1 for indicator in fastapi_indicators if indicator in content)
+
+            # Return framework with highest score (min 2 indicators required)
+            if django_score >= 2 and django_score > fastapi_score:
+                return 'django'
+            elif fastapi_score >= 2:
+                return 'fastapi'
+            else:
+                return None
+
+    except Exception:
+        # If file can't be read, return None
         return None
 
 

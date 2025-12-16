@@ -23,7 +23,7 @@ from .models import (
 )
 from .neo4j_client import Neo4jClient
 from ..repo_loader import RepositoryInfo
-from ...logger import get_logger
+from src.logger import get_logger
 
 
 logger = get_logger(__name__)

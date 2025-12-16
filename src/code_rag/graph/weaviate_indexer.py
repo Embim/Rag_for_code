@@ -17,7 +17,7 @@ from weaviate.classes.query import Filter
 
 from .models import GraphNode, NodeType
 from .neo4j_client import Neo4jClient
-from ...logger import get_logger
+from src.logger import get_logger
 
 
 logger = get_logger(__name__)

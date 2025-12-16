@@ -179,6 +179,7 @@ class PythonParser(BaseParser):
                 parameters=parameters,
                 return_type=return_type,
                 metadata={
+                    'decorators': decorators,
                     'is_async': isinstance(node, ast.AsyncFunctionDef),
                     'is_property': '@property' in decorators,
                     'is_staticmethod': '@staticmethod' in decorators,

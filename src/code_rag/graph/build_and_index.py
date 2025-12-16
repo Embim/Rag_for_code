@@ -20,7 +20,7 @@ from .graph_builder import GraphBuilder
 from .api_linker import APILinker
 from .weaviate_indexer import WeaviateIndexer
 from .models import ComponentNode, EndpointNode
-from ...logger import get_logger
+from src.logger import get_logger
 
 
 logger = get_logger(__name__)

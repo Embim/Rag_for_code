@@ -98,7 +98,8 @@ class ReactParser(BaseParser):
                 text=True,
                 encoding='utf-8',
                 errors='replace',
-                timeout=5
+                timeout=5,
+                cwd=str(parser_dir)  # Run from parser directory to find node_modules
             )
             # If it doesn't error, we're good
             self.babel_parser_path = js_parser_path
@@ -156,13 +157,16 @@ class ReactParser(BaseParser):
         """Parse using Babel (accurate AST parsing)."""
         try:
             # Call Node.js parser
+            # IMPORTANT: Set cwd to parser directory so Node.js can find node_modules
+            parser_dir = self.babel_parser_path.parent
             result = subprocess.run(
                 ['node', str(self.babel_parser_path), str(file_path)],
                 capture_output=True,
                 text=True,
                 encoding='utf-8',
                 errors='replace',  # Replace invalid characters instead of crashing
-                timeout=30
+                timeout=30,
+                cwd=str(parser_dir)  # Run from parser directory to find node_modules
             )
 
             if result.returncode != 0:

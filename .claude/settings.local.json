@@ -14,7 +14,9 @@
       "WebFetch(domain:openrouter.ai)",
       "Bash(where:*)",
       "Bash(dir:*)",
-      "Bash(powershell -Command:*)"
+      "Bash(powershell -Command:*)",
+      "Bash(Select-Object -First 200)",
+      "Bash(.venvScriptspython.exe debug_index.py \"G:\\api.bo\\app\\backend\\views.py\" --file)"
     ],
     "deny": [],
     "ask": []

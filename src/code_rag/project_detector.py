@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import List, Dict, Set, Tuple
 import json
 
-from ..logger import get_logger
+from src.logger import get_logger
 
 
 logger = get_logger(__name__)

@@ -141,7 +141,7 @@ class DjangoParser(BaseParser):
                     # Field assignment: name = models.CharField(...)
                     for target in node.targets:
                         if isinstance(target, ast.Name):
-                            field_name = target.name
+                            field_name = target.id
 
                             # Skip private fields and Meta
                             if field_name.startswith('_') or field_name == 'Meta':
@@ -219,7 +219,7 @@ class DjangoParser(BaseParser):
                 if isinstance(node, ast.Assign):
                     for target in node.targets:
                         if isinstance(target, ast.Name):
-                            field_name = target.name
+                            field_name = target.id
 
                             if isinstance(node.value, ast.Call):
                                 field_type = self._get_field_type(node.value)
@@ -270,7 +270,7 @@ class DjangoParser(BaseParser):
                         if isinstance(item, ast.Assign):
                             for target in item.targets:
                                 if isinstance(target, ast.Name):
-                                    key = target.name
+                                    key = target.id
                                     try:
                                         value = ast.literal_eval(item.value)
                                         meta_info[key] = value
@@ -289,40 +289,91 @@ class DjangoParser(BaseParser):
 
     def _enhance_views(self, result: ParseResult, source: str) -> None:
         """Enhance views with Django-specific information."""
-        # Check for Django view imports
-        has_django_views = any(
-            'django.views' in imp or 'django.http' in imp
+        # Check for Django REST Framework imports
+        has_drf = any(
+            'rest_framework' in imp or 'django.views' in imp or 'django.http' in imp
             for imp in result.imports
         )
 
-        if not has_django_views:
+        if not has_drf:
             return
 
         for entity in result.entities:
-            # Function-based views
+            # Function-based views (especially DRF @api_view)
             if entity.type == EntityType.FUNCTION:
-                # Check if it looks like a view (has request parameter)
-                if entity.parameters and entity.parameters[0]['name'] == 'request':
+                # Check for DRF @api_view decorator
+                decorators = entity.metadata.get('decorators', [])
+
+                if any('api_view' in dec for dec in decorators):
+                    # This is a DRF API endpoint!
+                    entity.type = EntityType.ENDPOINT
+
+                    # Extract HTTP methods from @api_view(['GET', 'POST'])
+                    http_methods = self._extract_api_view_methods(entity, source)
+                    entity.metadata['http_method'] = http_methods[0] if http_methods else 'GET'
+                    entity.metadata['http_methods'] = http_methods
+                    entity.metadata['path'] = f"/{entity.name}"  # Default path
+                    entity.metadata['framework'] = 'django-rest-framework'
+
+                # Regular function-based view
+                elif entity.parameters and entity.parameters[0]['name'] == 'request':
                     entity.metadata['is_view'] = True
                     entity.metadata['view_type'] = 'function'
 
-            # Class-based views
+            # Class-based views (DRF ViewSets and APIView)
             elif entity.type == EntityType.CLASS:
                 base_classes = entity.metadata.get('base_classes', [])
 
-                # Check if it inherits from View or generic views
-                view_base_classes = [
-                    'View', 'TemplateView', 'ListView', 'DetailView',
-                    'CreateView', 'UpdateView', 'DeleteView', 'FormView'
+                # Check for DRF ViewSets and APIView
+                drf_base_classes = [
+                    'APIView', 'ViewSet', 'ModelViewSet', 'ReadOnlyModelViewSet',
+                    'GenericViewSet', 'GenericAPIView'
                 ]
 
-                if any(base in base_classes for base in view_base_classes):
+                if any(base in base_classes for base in drf_base_classes):
+                    # Mark as view, but don't change to ENDPOINT (class-based)
                     entity.metadata['is_view'] = True
-                    entity.metadata['view_type'] = 'class'
+                    entity.metadata['view_type'] = 'class-api'
                     entity.metadata['view_base'] = next(
                         base for base in base_classes
-                        if base in view_base_classes
+                        if base in drf_base_classes
                     )
+                    entity.metadata['framework'] = 'django-rest-framework'
+                else:
+                    # Regular Django views
+                    view_base_classes = [
+                        'View', 'TemplateView', 'ListView', 'DetailView',
+                        'CreateView', 'UpdateView', 'DeleteView', 'FormView'
+                    ]
+
+                    if any(base in base_classes for base in view_base_classes):
+                        entity.metadata['is_view'] = True
+                        entity.metadata['view_type'] = 'class'
+                        entity.metadata['view_base'] = next(
+                            base for base in base_classes
+                            if base in view_base_classes
+                        )
+
+    def _extract_api_view_methods(self, entity: CodeEntity, source: str) -> List[str]:
+        """Extract HTTP methods from @api_view decorator."""
+        methods = ['GET']  # Default
+
+        try:
+            # Look for @api_view(['GET', 'POST']) pattern in decorators
+            decorators = entity.metadata.get('decorators', [])
+
+            for decorator in decorators:
+                if 'api_view' in decorator:
+                    # Try to extract methods from decorator string
+                    import re
+                    match = re.findall(r"['\"](GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)['\"]", decorator)
+                    if match:
+                        methods = match
+
+        except Exception as e:
+            logger.debug(f"Failed to extract HTTP methods: {e}")
+
+        return methods
 
     def _parse_urls(
         self,
@@ -338,7 +389,7 @@ class DjangoParser(BaseParser):
             for node in tree.body:
                 if isinstance(node, ast.Assign):
                     for target in node.targets:
-                        if isinstance(target, ast.Name) and target.name == 'urlpatterns':
+                        if isinstance(target, ast.Name) and target.id == 'urlpatterns':
                             # Parse URL patterns
                             patterns = self._extract_url_patterns(node.value, source)
 

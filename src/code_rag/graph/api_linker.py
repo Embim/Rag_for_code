@@ -17,7 +17,7 @@ from urllib.parse import urlparse
 from difflib import SequenceMatcher
 
 from .models import GraphRelationship, RelationshipType, ComponentNode, EndpointNode
-from ...logger import get_logger
+from src.logger import get_logger
 
 
 logger = get_logger(__name__)

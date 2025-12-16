@@ -9,7 +9,7 @@ from neo4j import GraphDatabase, Driver, Session
 from neo4j.exceptions import ServiceUnavailable, AuthError
 
 from .models import GraphNode, GraphRelationship, NodeType, RelationshipType
-from ...logger import get_logger
+from src.logger import get_logger
 
 
 logger = get_logger(__name__)
