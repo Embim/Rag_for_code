@@ -16,7 +16,19 @@
       "Bash(dir:*)",
       "Bash(powershell -Command:*)",
       "Bash(Select-Object -First 200)",
-      "Bash(.venvScriptspython.exe debug_index.py \"G:\\api.bo\\app\\backend\\views.py\" --file)"
+      "Bash(.venvScriptspython.exe debug_index.py \"G:\\api.bo\\app\\backend\\views.py\" --file)",
+      "WebFetch(domain:docs.langchain.com)",
+      "WebFetch(domain:langfuse.com)",
+      "WebFetch(domain:langchain-ai.github.io)",
+      "WebSearch",
+      "WebFetch(domain:deepwiki.com)",
+      "Bash(cat:*)",
+      "Bash(python3:*)",
+      "Bash(pip show:*)",
+      "WebFetch(domain:docs.weaviate.io)",
+      "WebFetch(domain:forum.weaviate.io)",
+      "WebFetch(domain:weaviate-python-client.readthedocs.io)",
+      "Bash(.venvScriptspython.exe -m pip install python-docx pillow)"
     ],
     "deny": [],
     "ask": []

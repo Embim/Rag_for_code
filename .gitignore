@@ -32,6 +32,7 @@ ENV/
 *.swp
 *.swo
 *~
+/СОП
 
 # Jupyter Notebook
 .ipynb_checkpoints

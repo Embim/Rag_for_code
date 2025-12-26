@@ -19,7 +19,7 @@ from .models import (
 from .neo4j_client import Neo4jClient
 from .graph_builder import GraphBuilder
 from .api_linker import APILinker
-from .weaviate_indexer import WeaviateIndexer
+from .weaviate_indexer import WeaviateIndexer, AsyncWeaviateIndexer
 
 __all__ = [
     # Models
@@ -33,7 +33,8 @@ __all__ = [
     'Neo4jClient',
     'GraphBuilder',
     'APILinker',
-    'WeaviateIndexer'
+    'WeaviateIndexer',
+    'AsyncWeaviateIndexer',
 ]
 
 __version__ = "0.1.0"

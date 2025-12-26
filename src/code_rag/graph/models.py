@@ -21,6 +21,8 @@ class NodeType(str, Enum):
     ENDPOINT = "Endpoint"     # API endpoints
     MODEL = "Model"           # Data models (Django, Pydantic)
     ROUTE = "Route"           # Frontend routes
+    DOCUMENT = "Document"     # Documentation files (Word, PDF, etc)
+    DOCUMENT_SECTION = "DocumentSection"  # Section within document
 
 
 class RelationshipType(str, Enum):
@@ -162,6 +164,7 @@ class FunctionNode(GraphNode):
 
     signature: str = ""
     docstring: Optional[str] = None
+    code: str = ""  # Full source code of the function
     start_line: int = 0
     end_line: int = 0
     is_async: bool = False
@@ -175,6 +178,7 @@ class FunctionNode(GraphNode):
         self.properties.update({
             'signature': self.signature,
             'docstring': self.docstring or '',
+            'code': self.code,  # Store full source code
             'start_line': self.start_line,
             'end_line': self.end_line,
             'is_async': self.is_async,
@@ -189,6 +193,7 @@ class ClassNode(GraphNode):
     """Class node in the knowledge graph."""
 
     docstring: Optional[str] = None
+    code: str = ""  # Full source code of the class
     base_classes: List[str] = field(default_factory=list)
     start_line: int = 0
     end_line: int = 0
@@ -198,6 +203,7 @@ class ClassNode(GraphNode):
         self.type = NodeType.CLASS
         self.properties.update({
             'docstring': self.docstring or '',
+            'code': self.code,  # Store full source code
             'base_classes': ','.join(self.base_classes) if self.base_classes else '',
             'start_line': self.start_line,
             'end_line': self.end_line,
@@ -209,6 +215,7 @@ class ClassNode(GraphNode):
 class ComponentNode(GraphNode):
     """React/Vue component node in the knowledge graph."""
 
+    code: str = ""  # Full source code of the component
     props_type: Optional[str] = None
     hooks_used: List[str] = field(default_factory=list)
     start_line: int = 0
@@ -219,6 +226,7 @@ class ComponentNode(GraphNode):
     def __post_init__(self):
         self.type = NodeType.COMPONENT
         self.properties.update({
+            'code': self.code,  # Store full source code
             'props_type': self.props_type or '',
             'hooks_used': ','.join(self.hooks_used) if self.hooks_used else '',
             'start_line': self.start_line,
@@ -304,6 +312,58 @@ class GraphRelationship:
             'confidence': self.confidence,
             **self.properties
         }
+
+
+@dataclass
+class DocumentNode(GraphNode):
+    """Documentation file node (Word, PDF, Markdown, etc.)."""
+
+    file_path: str = ""  # Path to source file
+    document_type: str = "SOP"  # SOP, Policy, Manual, Instruction, etc.
+    content: str = ""  # Full text content
+    author: str = ""
+    created_date: str = ""
+    modified_date: str = ""
+    sections_count: int = 0
+    images_count: int = 0
+
+    def __post_init__(self):
+        self.type = NodeType.DOCUMENT
+        self.properties.update({
+            'file_path': self.file_path,
+            'document_type': self.document_type,
+            'content': self.content,  # Full searchable content
+            'author': self.author,
+            'created_date': self.created_date,
+            'modified_date': self.modified_date,
+            'sections_count': self.sections_count,
+            'images_count': self.images_count,
+        })
+
+
+@dataclass
+class DocumentSectionNode(GraphNode):
+    """Section within a document."""
+
+    document_id: str = ""  # Parent document ID
+    section_title: str = ""
+    section_level: int = 0  # Heading level
+    content: str = ""  # Section text content
+    position: int = 0  # Position in document
+    has_images: bool = False
+    has_tables: bool = False
+
+    def __post_init__(self):
+        self.type = NodeType.DOCUMENT_SECTION
+        self.properties.update({
+            'document_id': self.document_id,
+            'section_title': self.section_title,
+            'section_level': self.section_level,
+            'content': self.content,
+            'position': self.position,
+            'has_images': self.has_images,
+            'has_tables': self.has_tables,
+        })
 
 
 def create_node_id(

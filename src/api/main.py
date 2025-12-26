@@ -25,6 +25,7 @@ from .dependencies import lifespan_context
 from .models import ErrorResponse
 from .routes import search, repos, diagnostics, visualize, auth, reindex
 from .auth import create_initial_admin_key
+from .langfuse_tracing import LangfuseMiddleware, get_langfuse
 from ..logger import get_logger, setup_logging
 import os
 
@@ -73,6 +74,11 @@ def create_app() -> FastAPI:
 
     # GZip compression
     app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+    # Langfuse tracing (if configured)
+    if os.getenv("LANGFUSE_PUBLIC_KEY") and os.getenv("LANGFUSE_SECRET_KEY"):
+        app.add_middleware(LangfuseMiddleware)
+        logger.info("Langfuse tracing enabled")
 
     # Request timing middleware
     @app.middleware("http")

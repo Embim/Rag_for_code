@@ -14,7 +14,7 @@
 git clone <repo_url> rag-for-code
 cd rag-for-code
 
-python3 -m venv .venv
+python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
 
 pip install -r requirements.txt
@@ -30,6 +30,10 @@ pip install -r requirements.txt
 NEO4J_PASSWORD=your_password
 OPENROUTER_API_KEY=sk-or-v1-...
 TELEGRAM_BOT_TOKEN=123456:ABC...  # опционально
+
+# LangSmith для мониторинга LangGraph (опционально, но рекомендуется)
+# Получите бесплатный ключ: https://smith.langchain.com/
+LANGSMITH_API_KEY=lsv2_pt_...
 ```
 
 ---
@@ -61,7 +65,9 @@ uvicorn src.api.main:app --host 0.0.0.0 --port 8000
 ---
 
 ## 5. Добавление репозитория
+python -m src.code_rag.graph.build_and_index G:\ui.bo  --clear
 
+python -m src.code_rag.graph.build_and_index G:\api.bo 
 ```bash
 # GitHub URL
 curl -X POST "http://localhost:8000/api/repos" \
@@ -119,7 +125,104 @@ python -m src.telegram_bot.bot
 
 ---
 
-## 8. Troubleshooting
+## 8. LangGraph Server + Langfuse
+
+Агентный RAG с визуализацией и мониторингом.
+
+### Архитектура
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  LangGraph Server (localhost:2024)                      │
+│                                                         │
+│  context_collector → quality_checker → [decision]       │
+│         ▲                                  │            │
+│         │              ┌───────────────────┤            │
+│         │              │                   │            │
+│         │         score < 0.6         score >= 0.6      │
+│         │              │                   │            │
+│         └── query_rewriter            answer_generator  │
+│                                            │            │
+│                                           END           │
+└─────────────────────────────────────────────────────────┘
+                         │ traces
+                         ▼
+┌─────────────────────────────────────────────────────────┐
+│  Langfuse (cloud.langfuse.com)                          │
+│  📊 Метрики  │  🔍 Трейсы  │  💰 Стоимость токенов     │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Настройка Langfuse
+
+1. Зарегистрируйтесь: https://cloud.langfuse.com
+2. Создайте проект и получите ключи
+3. Добавьте в `.env`:
+
+```bash
+LANGFUSE_PUBLIC_KEY=pk-lf-...
+LANGFUSE_SECRET_KEY=sk-lf-...
+LANGFUSE_HOST=https://cloud.langfuse.com
+```
+
+### Запуск LangGraph Server
+
+```bash
+# Установка
+pip install langgraph-cli langfuse
+
+# Запуск сервера
+cd src/langgraph_server
+langgraph dev
+```
+
+Сервер: http://127.0.0.1:2024
+
+### Использование
+
+**Python SDK:**
+```python
+from langgraph_sdk import get_client
+
+client = get_client(url="http://127.0.0.1:2024")
+
+# Создать запуск
+result = await client.runs.create(
+    assistant_id="rag",
+    input={"query": "Как работает аутентификация?"}
+)
+print(result)
+```
+
+**Напрямую из кода:**
+```python
+from src.langgraph_server import run_rag
+
+result = run_rag("Как работает checkout?")
+print(result["answer"])
+print(result["sources"])
+print(f"Итераций: {result['iterations']}, Качество: {result['quality_score']}")
+```
+
+**cURL:**
+```bash
+curl -X POST http://127.0.0.1:2024/runs \
+  -H "Content-Type: application/json" \
+  -d '{"assistant_id": "rag", "input": {"query": "authentication flow"}}'
+```
+
+### Мониторинг в Langfuse
+
+После запросов откройте https://cloud.langfuse.com:
+
+- **Traces** — полная цепочка выполнения
+- **Generations** — каждый вызов LLM
+- **Metrics** — латентность, токены, стоимость
+- **Scores** — качество контекста (quality_score)
+
+---
+
+## 9. Troubleshooting
 
 ### Neo4j не запускается
 

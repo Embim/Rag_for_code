@@ -1,6 +1,11 @@
 """
 Единая настройка логирования для всего проекта.
 """
+# #region agent log
+import json, time
+with open(r'c:\Users\petrc\OneDrive\Documents\Проекты\ПроетыПоРаботу\Rag_for_code\.cursor\debug.log', 'a', encoding='utf-8') as f:
+    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"D","location":"logger.py:11","message":"Before importing OUTPUTS_DIR","data":{"step":"before_outputs_dir"},"timestamp":int(time.time()*1000)}) + '\n')
+# #endregion
 import logging
 import logging.handlers
 from pathlib import Path
@@ -9,6 +14,10 @@ import time
 from contextlib import contextmanager
 
 from .config import OUTPUTS_DIR
+# #region agent log
+with open(r'c:\Users\petrc\OneDrive\Documents\Проекты\ПроетыПоРаботу\Rag_for_code\.cursor\debug.log', 'a', encoding='utf-8') as f:
+    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"D","location":"logger.py:21","message":"After importing OUTPUTS_DIR","data":{"step":"after_outputs_dir","outputs_dir":str(OUTPUTS_DIR)},"timestamp":int(time.time()*1000)}) + '\n')
+# #endregion
 
 
 def setup_logging(level: str = "INFO",

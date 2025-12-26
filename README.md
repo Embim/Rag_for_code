@@ -27,6 +27,7 @@ pip install -r requirements.txt
 # 2. Переменные окружения
 cp .env.example .env
 # Заполнить: OPENROUTER_API_KEY, NEO4J_PASSWORD
+# Опционально: LANGSMITH_API_KEY (для мониторинга LangGraph)
 
 # 3. Запуск БД
 docker-compose up -d

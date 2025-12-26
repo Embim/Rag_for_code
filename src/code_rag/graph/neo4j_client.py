@@ -446,3 +446,374 @@ class Neo4jClient:
                 'total_nodes': sum(node_counts.values()),
                 'total_relationships': sum(rel_counts.values())
             }
+
+    # ============== GRAPH TRAVERSAL METHODS ==============
+
+    def get_related_nodes(
+        self,
+        node_ids: List[str],
+        depth: int = 20,
+        relationship_types: Optional[List[str]] = None,
+        direction: str = "both",
+        limit: int = 100
+    ) -> List[Dict[str, Any]]:
+        """
+        Find related nodes at a given depth from source nodes.
+
+        Args:
+            node_ids: List of source node IDs
+            depth: How many hops to traverse (1-3 recommended)
+            relationship_types: Optional list of relationship types to follow
+            direction: "in", "out", or "both"
+            limit: Maximum number of results
+
+        Returns:
+            List of dicts with node properties, relationship type, and distance
+        """
+        if not node_ids:
+            return []
+
+        with self._driver.session(database=self.database) as session:
+            # Build relationship pattern based on direction
+            if direction == "out":
+                rel_pattern = "-[r*1..{}]->"
+            elif direction == "in":
+                rel_pattern = "<-[r*1..{}]-"
+            else:  # both
+                rel_pattern = "-[r*1..{}]-"
+
+            rel_pattern = rel_pattern.format(depth)
+
+            # Add relationship type filter if specified
+            if relationship_types:
+                types_str = "|".join(relationship_types)
+                rel_pattern = rel_pattern.replace("[r*", f"[r:{types_str}*")
+
+            query = f"""
+            MATCH (source:GraphNode)
+            WHERE source.id IN $node_ids
+            MATCH (source){rel_pattern}(related:GraphNode)
+            WHERE NOT (related.id IN $node_ids)
+            WITH DISTINCT related,
+                 [rel IN r | type(rel)] AS rel_types,
+                 size(r) AS distance
+            RETURN related, rel_types, distance
+            ORDER BY distance, related.name
+            LIMIT $limit
+            """
+
+            result = session.run(query, node_ids=node_ids, limit=limit)
+
+            nodes = []
+            for record in result:
+                node_dict = dict(record['related'])
+                node_dict['_relationship_types'] = record['rel_types']
+                node_dict['_distance'] = record['distance']
+                nodes.append(node_dict)
+
+            logger.info(f"Found {len(nodes)} related nodes for {len(node_ids)} source nodes")
+            return nodes
+
+    def find_callers(
+        self,
+        node_id: str,
+        depth: int = 2,
+        limit: int = 30
+    ) -> List[Dict[str, Any]]:
+        """
+        Find all functions/methods that call the given node.
+
+        Args:
+            node_id: ID of the target node (function/method)
+            depth: How many levels of callers to find
+            limit: Maximum number of results
+
+        Returns:
+            List of caller nodes with call chain info
+        """
+        with self._driver.session(database=self.database) as session:
+            query = """
+            MATCH (target:GraphNode {id: $node_id})
+            MATCH path = (caller:GraphNode)-[:CALLS*1..{}]->(target)
+            WHERE caller.id <> $node_id
+            WITH DISTINCT caller, length(path) as depth,
+                 [n IN nodes(path) | n.name] AS call_chain
+            RETURN caller, depth, call_chain
+            ORDER BY depth, caller.name
+            LIMIT $limit
+            """.format(depth)
+
+            result = session.run(query, node_id=node_id, limit=limit)
+
+            nodes = []
+            for record in result:
+                node_dict = dict(record['caller'])
+                node_dict['_call_depth'] = record['depth']
+                node_dict['_call_chain'] = record['call_chain']
+                node_dict['_relationship'] = 'CALLS'
+                nodes.append(node_dict)
+
+            logger.info(f"Found {len(nodes)} callers for {node_id}")
+            return nodes
+
+    def find_callees(
+        self,
+        node_id: str,
+        depth: int = 2,
+        limit: int = 30
+    ) -> List[Dict[str, Any]]:
+        """
+        Find all functions/methods that are called by the given node.
+
+        Args:
+            node_id: ID of the source node (function/method)
+            depth: How many levels of callees to find
+            limit: Maximum number of results
+
+        Returns:
+            List of callee nodes with call chain info
+        """
+        with self._driver.session(database=self.database) as session:
+            query = """
+            MATCH (source:GraphNode {id: $node_id})
+            MATCH path = (source)-[:CALLS*1..{}]->(callee:GraphNode)
+            WHERE callee.id <> $node_id
+            WITH DISTINCT callee, length(path) as depth,
+                 [n IN nodes(path) | n.name] AS call_chain
+            RETURN callee, depth, call_chain
+            ORDER BY depth, callee.name
+            LIMIT $limit
+            """.format(depth)
+
+            result = session.run(query, node_id=node_id, limit=limit)
+
+            nodes = []
+            for record in result:
+                node_dict = dict(record['callee'])
+                node_dict['_call_depth'] = record['depth']
+                node_dict['_call_chain'] = record['call_chain']
+                node_dict['_relationship'] = 'CALLED_BY'
+                nodes.append(node_dict)
+
+            logger.info(f"Found {len(nodes)} callees for {node_id}")
+            return nodes
+
+    def trace_ui_to_database(
+        self,
+        start_node_id: str,
+        limit: int = 20
+    ) -> List[Dict[str, Any]]:
+        """
+        Trace path from UI component to database models.
+
+        Path: Component → Endpoint → Function → Model
+
+        Args:
+            start_node_id: ID of starting node (usually Component or any UI element)
+            limit: Maximum number of paths
+
+        Returns:
+            List of nodes along the path with relationship info
+        """
+        with self._driver.session(database=self.database) as session:
+            # Try multiple path patterns to find UI→DB connections
+            # Use general patterns and filter by relationship types to avoid warnings
+            query = """
+            MATCH (start:GraphNode {id: $node_id})
+            OPTIONAL MATCH path1 = (start)-[r1]->(endpoint)
+                                   -[r2]->(func)
+                                   -[r3]->(model)
+            OPTIONAL MATCH path2 = (start)-[r4*1..3]->(func2)
+                                   -[r5]->(model2)
+            OPTIONAL MATCH path3 = (start)-[r6]->(endpoint2)
+                                   -[r7]->(model3)
+            WITH start,
+                 CASE WHEN r1 IS NOT NULL AND type(r1) = 'SENDS_REQUEST_TO' 
+                      AND 'Endpoint' IN labels(endpoint) THEN endpoint ELSE NULL END AS endpoint,
+                 CASE WHEN r2 IS NOT NULL AND type(r2) = 'HANDLES_REQUEST' THEN func ELSE NULL END AS func,
+                 CASE WHEN r3 IS NOT NULL AND type(r3) = 'USES_MODEL' 
+                      AND 'Model' IN labels(model) THEN model ELSE NULL END AS model,
+                 CASE WHEN r4 IS NOT NULL AND ALL(rel IN r4 WHERE type(rel) = 'CALLS') 
+                      THEN func2 ELSE NULL END AS func2,
+                 CASE WHEN r5 IS NOT NULL AND type(r5) = 'USES_MODEL' 
+                      AND 'Model' IN labels(model2) THEN model2 ELSE NULL END AS model2,
+                 CASE WHEN r6 IS NOT NULL AND type(r6) = 'SENDS_REQUEST_TO' 
+                      AND 'Endpoint' IN labels(endpoint2) THEN endpoint2 ELSE NULL END AS endpoint2,
+                 CASE WHEN r7 IS NOT NULL AND type(r7) = 'USES_MODEL' 
+                      AND 'Model' IN labels(model3) THEN model3 ELSE NULL END AS model3
+            WITH collect(DISTINCT {node: endpoint, rel: 'SENDS_REQUEST_TO', order: 1}) +
+                 collect(DISTINCT {node: func, rel: 'HANDLES_REQUEST', order: 2}) +
+                 collect(DISTINCT {node: model, rel: 'USES_MODEL', order: 3}) +
+                 collect(DISTINCT {node: func2, rel: 'CALLS', order: 2}) +
+                 collect(DISTINCT {node: model2, rel: 'USES_MODEL', order: 3}) +
+                 collect(DISTINCT {node: endpoint2, rel: 'SENDS_REQUEST_TO', order: 1}) +
+                 collect(DISTINCT {node: model3, rel: 'USES_MODEL', order: 3}) AS all_nodes
+            UNWIND all_nodes AS item
+            WITH item.node AS node, item.rel AS rel, item.order AS ord
+            WHERE node IS NOT NULL
+            RETURN DISTINCT node, rel, ord
+            ORDER BY ord
+            LIMIT $limit
+            """
+
+            result = session.run(query, node_id=start_node_id, limit=limit)
+
+            nodes = []
+            for record in result:
+                if record['node']:
+                    node_dict = dict(record['node'])
+                    node_dict['_relationship'] = record['rel']
+                    node_dict['_path_order'] = record['ord']
+                    nodes.append(node_dict)
+
+            logger.info(f"Traced {len(nodes)} nodes in UI→DB path from {start_node_id}")
+            return nodes
+
+    def trace_database_to_ui(
+        self,
+        start_node_id: str,
+        limit: int = 20
+    ) -> List[Dict[str, Any]]:
+        """
+        Trace path from database model to UI components.
+
+        Path: Model → Function → Endpoint → Component
+
+        Args:
+            start_node_id: ID of starting node (usually Model)
+            limit: Maximum number of paths
+
+        Returns:
+            List of nodes along the path with relationship info
+        """
+        with self._driver.session(database=self.database) as session:
+            # Use general patterns and filter by relationship types to avoid warnings
+            query = """
+            MATCH (start:GraphNode {id: $node_id})
+            OPTIONAL MATCH path1 = (start)<-[r1]-(func)
+                                   <-[r2]-(endpoint)
+                                   <-[r3]-(component)
+            OPTIONAL MATCH path2 = (start)<-[r4]-(func2)
+                                   <-[r5*1..3]-(caller)
+            OPTIONAL MATCH path3 = (start)<-[r6]-(endpoint2)
+                                   <-[r7]-(component2)
+            WITH start,
+                 CASE WHEN r1 IS NOT NULL AND type(r1) = 'USES_MODEL' THEN func ELSE NULL END AS func,
+                 CASE WHEN r2 IS NOT NULL AND type(r2) = 'HANDLES_REQUEST' 
+                      AND 'Endpoint' IN labels(endpoint) THEN endpoint ELSE NULL END AS endpoint,
+                 CASE WHEN r3 IS NOT NULL AND type(r3) = 'SENDS_REQUEST_TO' 
+                      AND 'Component' IN labels(component) THEN component ELSE NULL END AS component,
+                 CASE WHEN r4 IS NOT NULL AND type(r4) = 'USES_MODEL' THEN func2 ELSE NULL END AS func2,
+                 CASE WHEN r5 IS NOT NULL AND ALL(rel IN r5 WHERE type(rel) = 'CALLS') 
+                      THEN caller ELSE NULL END AS caller,
+                 CASE WHEN r6 IS NOT NULL AND type(r6) = 'USES_MODEL' 
+                      AND 'Endpoint' IN labels(endpoint2) THEN endpoint2 ELSE NULL END AS endpoint2,
+                 CASE WHEN r7 IS NOT NULL AND type(r7) = 'SENDS_REQUEST_TO' 
+                      AND 'Component' IN labels(component2) THEN component2 ELSE NULL END AS component2
+            WITH collect(DISTINCT {node: func, rel: 'USES_MODEL', order: 1}) +
+                 collect(DISTINCT {node: endpoint, rel: 'HANDLES_REQUEST', order: 2}) +
+                 collect(DISTINCT {node: component, rel: 'SENDS_REQUEST_TO', order: 3}) +
+                 collect(DISTINCT {node: func2, rel: 'USES_MODEL', order: 1}) +
+                 collect(DISTINCT {node: caller, rel: 'CALLS', order: 2}) +
+                 collect(DISTINCT {node: endpoint2, rel: 'USES_MODEL', order: 1}) +
+                 collect(DISTINCT {node: component2, rel: 'SENDS_REQUEST_TO', order: 3}) AS all_nodes
+            UNWIND all_nodes AS item
+            WITH item.node AS node, item.rel AS rel, item.order AS ord
+            WHERE node IS NOT NULL
+            RETURN DISTINCT node, rel, ord
+            ORDER BY ord
+            LIMIT $limit
+            """
+
+            result = session.run(query, node_id=start_node_id, limit=limit)
+
+            nodes = []
+            for record in result:
+                if record['node']:
+                    node_dict = dict(record['node'])
+                    node_dict['_relationship'] = record['rel']
+                    node_dict['_path_order'] = record['ord']
+                    nodes.append(node_dict)
+
+            logger.info(f"Traced {len(nodes)} nodes in DB→UI path from {start_node_id}")
+            return nodes
+
+    def get_impact_analysis(
+        self,
+        node_id: str,
+        depth: int = 2
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Analyze what would be impacted by changing the given node.
+
+        Args:
+            node_id: ID of the node to analyze
+            depth: How deep to search for dependencies
+
+        Returns:
+            Dict with categorized impacted nodes:
+            - callers: functions that call this node
+            - importers: files that import this node
+            - inheritors: classes that inherit from this node
+            - model_users: functions/endpoints using this model
+        """
+        with self._driver.session(database=self.database) as session:
+            results = {
+                'callers': [],
+                'importers': [],
+                'inheritors': [],
+                'model_users': [],
+            }
+
+            # Find callers
+            caller_query = """
+            MATCH (target:GraphNode {id: $node_id})
+            MATCH (caller)-[:CALLS*1..{}]->(target)
+            WHERE caller.id <> $node_id
+            RETURN DISTINCT caller
+            LIMIT 20
+            """.format(depth)
+            for record in session.run(caller_query, node_id=node_id):
+                node_dict = dict(record['caller'])
+                node_dict['_impact_type'] = 'caller'
+                results['callers'].append(node_dict)
+
+            # Find importers
+            importer_query = """
+            MATCH (target:GraphNode {id: $node_id})
+            MATCH (importer)-[:IMPORTS]->(target)
+            RETURN DISTINCT importer
+            LIMIT 20
+            """
+            for record in session.run(importer_query, node_id=node_id):
+                node_dict = dict(record['importer'])
+                node_dict['_impact_type'] = 'importer'
+                results['importers'].append(node_dict)
+
+            # Find inheritors (for classes)
+            inheritor_query = """
+            MATCH (target:GraphNode {id: $node_id})
+            MATCH (child)-[:INHERITS*1..{}]->(target)
+            RETURN DISTINCT child
+            LIMIT 20
+            """.format(depth)
+            for record in session.run(inheritor_query, node_id=node_id):
+                node_dict = dict(record['child'])
+                node_dict['_impact_type'] = 'inheritor'
+                results['inheritors'].append(node_dict)
+
+            # Find model users (for models)
+            model_user_query = """
+            MATCH (target:GraphNode {id: $node_id})
+            MATCH (user)-[:USES_MODEL]->(target)
+            RETURN DISTINCT user
+            LIMIT 20
+            """
+            for record in session.run(model_user_query, node_id=node_id):
+                node_dict = dict(record['user'])
+                node_dict['_impact_type'] = 'model_user'
+                results['model_users'].append(node_dict)
+
+            total = sum(len(v) for v in results.values())
+            logger.info(f"Impact analysis for {node_id}: {total} impacted nodes")
+            return results

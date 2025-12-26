@@ -16,8 +16,6 @@ from typing import List, Dict, Any, Optional, Set
 from dataclasses import dataclass
 from datetime import datetime
 
-import git
-from git import Repo, GitCommandError
 import pathspec
 
 from src.logger import get_logger
@@ -188,6 +186,9 @@ class RepositoryLoader:
         custom_ignore: Optional[List[str]]
     ) -> RepositoryInfo:
         """Load repository from Git URL."""
+        # Lazy import to avoid blocking os.getcwd() call during module import
+        from git import Repo, GitCommandError
+        
         # Generate name from URL if not provided
         if not name:
             name = self._extract_repo_name_from_url(url)
@@ -248,7 +249,9 @@ class RepositoryLoader:
             name = path.name
 
         # Check if it's a git repository
+        # Lazy import to avoid blocking os.getcwd() call during module import
         try:
+            from git import Repo
             repo = Repo(path)
             commit_hash = repo.head.commit.hexsha
             branch = repo.active_branch.name
@@ -278,6 +281,9 @@ class RepositoryLoader:
         custom_ignore: Optional[List[str]]
     ) -> RepositoryInfo:
         """Update existing repository."""
+        # Lazy import to avoid blocking os.getcwd() call during module import
+        from git import Repo, GitCommandError
+        
         try:
             repo = Repo(repo_path)
 
@@ -376,6 +382,9 @@ class RepositoryLoader:
         Returns:
             List of changed file paths
         """
+        # Lazy import to avoid blocking os.getcwd() call during module import
+        from git import Repo
+        
         try:
             repo = Repo(repo_info.path)
 

@@ -45,6 +45,13 @@ class SearchConfig:
     max_hops: int = 3
     expand_results: bool = True  # Expand with graph neighbors
 
+    # Call Graph Enrichment - CRITICAL for context quality
+    enable_call_graph_enrichment: bool = True  # Enrich with called functions
+    call_graph_depth: int = 1  # How many levels of function calls to include (1-2)
+    max_callees_per_function: int = 5  # Max called functions per node
+    include_parent_class: bool = True  # Include full class for methods
+    include_file_context: bool = True  # Include file-level imports/constants
+
     # Retrieval parameters
     top_k_vector: int = 15
     top_k_bm25: int = 25
@@ -278,13 +285,35 @@ class CodeRetriever:
             expanded = []
             relationships = []
 
+        # Step 3: Call Graph Enrichment - CRITICAL for understanding code logic!
+        # This adds called functions, parent classes, and file context
+        enrichment_nodes = []
+        enrichment_relationships = []
+
+        if config.enable_call_graph_enrichment:
+            try:
+                enrichment_nodes, enrichment_relationships = self.enrich_with_call_graph(
+                    nodes=primary_nodes[:config.top_k_final],  # Only enrich top results
+                    depth=config.call_graph_depth,
+                    max_callees=config.max_callees_per_function,
+                    include_parent_class=config.include_parent_class,
+                    include_file_context=config.include_file_context
+                )
+                logger.info(f"Call graph enrichment: added {len(enrichment_nodes)} nodes")
+            except Exception as e:
+                logger.warning(f"Call graph enrichment failed: {e}")
+
+        # Combine all expanded nodes
+        all_expanded = expanded + enrichment_nodes
+        all_relationships = relationships + enrichment_relationships
+
         # Build result
         result = SearchResult(
             primary_nodes=primary_nodes[:config.top_k_final],
-            expanded_nodes=expanded,
-            relationships=relationships,
+            expanded_nodes=all_expanded,
+            relationships=all_relationships,
             strategy_used=strategy.value,
-            total_nodes_visited=len(primary_nodes) + len(expanded),
+            total_nodes_visited=len(primary_nodes) + len(all_expanded),
             execution_time_ms=(time.time() - start_time) * 1000
         )
 
@@ -688,3 +717,230 @@ class CodeRetriever:
                 continue
 
         return expanded, relationships
+
+    def enrich_with_call_graph(
+        self,
+        nodes: List[Dict[str, Any]],
+        depth: int = 1,
+        max_callees: int = 5,
+        include_parent_class: bool = True,
+        include_file_context: bool = True
+    ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+        """
+        Enrich nodes with call graph context.
+
+        For each node (function/method):
+        1. Add called functions (callees) - functions this node calls
+        2. For methods: add parent class with all methods
+        3. Add file-level context (imports, module constants)
+
+        Args:
+            nodes: Nodes to enrich
+            depth: How many levels of callees to fetch (1-2 recommended)
+            max_callees: Maximum callees per function
+            include_parent_class: Include full parent class for methods
+            include_file_context: Include file-level imports and constants
+
+        Returns:
+            Tuple of (enriched_nodes, relationships)
+        """
+        enriched = []
+        relationships = []
+        visited = set()
+
+        logger.info(f"Enriching {len(nodes)} nodes with call graph (depth={depth})")
+
+        for node in nodes:
+            node_id = node.get('node_id') or node.get('id')
+            if not node_id or node_id in visited:
+                continue
+
+            visited.add(node_id)
+            node_type = node.get('node_type') or node.get('type', '')
+
+            # 1. Get called functions (callees) - CRITICAL for understanding logic
+            if node_type in ['Function', 'Method']:
+                callees = self._get_callees(node_id, depth=depth, max_results=max_callees, visited=visited)
+                enriched.extend(callees['nodes'])
+                relationships.extend(callees['relationships'])
+
+            # 2. Get parent class for methods - CRITICAL for understanding context
+            if node_type == 'Method' and include_parent_class:
+                parent_class = self._get_parent_class(node_id, visited=visited)
+                if parent_class:
+                    enriched.extend(parent_class['nodes'])
+                    relationships.extend(parent_class['relationships'])
+
+            # 3. Get file-level context (imports, module variables)
+            if include_file_context:
+                file_context = self._get_file_context(node_id, visited=visited)
+                enriched.extend(file_context['nodes'])
+                relationships.extend(file_context['relationships'])
+
+        logger.info(f"Enrichment complete: added {len(enriched)} nodes, {len(relationships)} relationships")
+
+        return enriched, relationships
+
+    def _get_callees(
+        self,
+        node_id: str,
+        depth: int = 1,
+        max_results: int = 5,
+        visited: Set[str] = None
+    ) -> Dict[str, List]:
+        """Get functions called by this node."""
+        if visited is None:
+            visited = set()
+
+        nodes = []
+        relationships = []
+
+        try:
+            # Query: Find all functions this node calls (depth=1 or 2)
+            cypher = f"""
+            MATCH path = (source {{id: $node_id}})-[:CALLS*1..{depth}]->(callee)
+            WHERE callee.type IN ['Function', 'Method']
+            AND NOT (callee.id IN $visited)
+            WITH callee, length(path) as call_depth
+            ORDER BY call_depth
+            LIMIT $max_results
+            RETURN callee, call_depth
+            """
+
+            result = self.neo4j.execute_cypher(
+                cypher,
+                node_id=node_id,
+                visited=list(visited),
+                max_results=max_results
+            )
+
+            for record in result:
+                callee = dict(record['callee'])
+                call_depth = record['call_depth']
+
+                if callee['id'] not in visited:
+                    # Mark where this came from
+                    callee['_enrichment_source'] = 'callee'
+                    callee['_call_depth'] = call_depth
+                    nodes.append(callee)
+                    visited.add(callee['id'])
+
+                    # Add relationship
+                    relationships.append({
+                        'type': 'CALLS',
+                        'source': node_id,
+                        'target': callee['id'],
+                        'depth': call_depth
+                    })
+
+        except Exception as e:
+            logger.warning(f"Failed to get callees for {node_id}: {e}")
+
+        return {'nodes': nodes, 'relationships': relationships}
+
+    def _get_parent_class(
+        self,
+        method_id: str,
+        visited: Set[str] = None
+    ) -> Dict[str, List]:
+        """Get parent class for a method."""
+        if visited is None:
+            visited = set()
+
+        nodes = []
+        relationships = []
+
+        try:
+            # Query: Find parent class and its other methods
+            cypher = """
+            MATCH (method {id: $method_id})<-[:CONTAINS]-(parent_class:Class)
+            OPTIONAL MATCH (parent_class)-[:CONTAINS]->(sibling_method)
+            WHERE sibling_method.type = 'Method'
+            AND sibling_method.id <> $method_id
+            AND NOT (sibling_method.id IN $visited)
+            RETURN parent_class, collect(DISTINCT sibling_method) as siblings
+            LIMIT 1
+            """
+
+            result = self.neo4j.execute_cypher(
+                cypher,
+                method_id=method_id,
+                visited=list(visited)
+            )
+
+            for record in result:
+                # Add parent class
+                parent_class = dict(record['parent_class'])
+                if parent_class['id'] not in visited:
+                    parent_class['_enrichment_source'] = 'parent_class'
+                    nodes.append(parent_class)
+                    visited.add(parent_class['id'])
+
+                    relationships.append({
+                        'type': 'CONTAINS',
+                        'source': parent_class['id'],
+                        'target': method_id
+                    })
+
+                # Add sibling methods (other methods in same class)
+                siblings = record.get('siblings', [])
+                for sibling in siblings:
+                    if sibling and sibling['id'] not in visited:
+                        sibling_dict = dict(sibling)
+                        sibling_dict['_enrichment_source'] = 'sibling_method'
+                        nodes.append(sibling_dict)
+                        visited.add(sibling_dict['id'])
+
+                        relationships.append({
+                            'type': 'CONTAINS',
+                            'source': parent_class['id'],
+                            'target': sibling_dict['id']
+                        })
+
+        except Exception as e:
+            logger.warning(f"Failed to get parent class for {method_id}: {e}")
+
+        return {'nodes': nodes, 'relationships': relationships}
+
+    def _get_file_context(
+        self,
+        node_id: str,
+        visited: Set[str] = None
+    ) -> Dict[str, List]:
+        """Get file-level context (imports, module variables)."""
+        if visited is None:
+            visited = set()
+
+        nodes = []
+        relationships = []
+
+        try:
+            # Query: Find containing file
+            cypher = """
+            MATCH (node {id: $node_id})<-[:CONTAINS]-(file:File)
+            RETURN file
+            LIMIT 1
+            """
+
+            result = self.neo4j.execute_cypher(
+                cypher,
+                node_id=node_id
+            )
+
+            for record in result:
+                file_node = dict(record['file'])
+                if file_node['id'] not in visited:
+                    file_node['_enrichment_source'] = 'file_context'
+                    nodes.append(file_node)
+                    visited.add(file_node['id'])
+
+                    relationships.append({
+                        'type': 'CONTAINS',
+                        'source': file_node['id'],
+                        'target': node_id
+                    })
+
+        except Exception as e:
+            logger.warning(f"Failed to get file context for {node_id}: {e}")
+
+        return {'nodes': nodes, 'relationships': relationships}

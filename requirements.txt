@@ -10,7 +10,7 @@ razdel>=0.5.0
 
 # Embeddings and vector search
 sentence-transformers>=2.2.0
-weaviate-client>=4.6.0
+weaviate-client>=4.10.0
 
 # BM25 search
 rank-bm25>=0.2.2
@@ -48,6 +48,10 @@ neo4j>=5.14.0
 # Code parsing
 tree-sitter>=0.20.0
 
+# Document parsing (Word, PDF)
+python-docx>=1.0.0  # For .docx files
+pillow>=10.0.0  # For images in documents
+
 # Testing
 pytest>=7.4.0
 pytest-cov>=4.1.0
@@ -60,3 +64,12 @@ requests>=2.31.0  # For Mermaid.ink API
 fastapi>=0.109.0
 uvicorn[standard]>=0.27.0  # ASGI server with auto-reload
 python-multipart>=0.0.6  # For file uploads (if needed later)
+
+# LangGraph for agent orchestration
+langgraph>=0.2.0
+langchain-core>=0.3.0
+langgraph-cli>=0.1.0
+langgraph-sdk>=0.1.0
+
+# Langfuse for LLM observability
+langfuse>=2.0.0

@@ -188,6 +188,7 @@ class GraphBuilder:
                     name=entity.name,
                     signature=entity.signature or f"def {entity.name}(...)",
                     docstring=entity.docstring,
+                    code=entity.code,  # Include full source code
                     start_line=entity.start_line,
                     end_line=entity.end_line,
                     is_async=entity.metadata.get('is_async', False),
@@ -203,6 +204,7 @@ class GraphBuilder:
                     name=entity.name,
                     signature=entity.signature or f"def {entity.name}(...)",
                     docstring=entity.docstring,
+                    code=entity.code,  # Include full source code
                     start_line=entity.start_line,
                     end_line=entity.end_line,
                     is_async=entity.metadata.get('is_async', False),
@@ -217,6 +219,7 @@ class GraphBuilder:
                     id=entity_id,
                     name=entity.name,
                     docstring=entity.docstring,
+                    code=entity.code,  # Include full source code
                     base_classes=entity.metadata.get('base_classes', []),
                     start_line=entity.start_line,
                     end_line=entity.end_line,
@@ -230,6 +233,7 @@ class GraphBuilder:
                 return ComponentNode(
                     id=entity_id,
                     name=entity.name,
+                    code=entity.code,  # Include full source code
                     props_type=entity.metadata.get('props_type'),
                     hooks_used=hook_names,
                     start_line=entity.start_line,

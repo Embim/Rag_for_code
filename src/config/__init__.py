@@ -34,10 +34,14 @@ PROCESSED_DIR = DATA_DIR / "processed"
 MODELS_DIR = PROJECT_ROOT / "models"
 OUTPUTS_DIR = PROJECT_ROOT / "outputs"
 
-# Create directories
-DATA_DIR.mkdir(parents=True, exist_ok=True)
-OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
-MODELS_DIR.mkdir(parents=True, exist_ok=True)
+# Note: All blocking file I/O operations (like logging to debug.log) were removed from module level
+# to avoid blocking the event loop during module import. Any necessary logging should be done
+# asynchronously or in separate threads using asyncio.to_thread().
+
+# Note: Directories are created lazily when needed to avoid blocking
+# file system operations during module import (which blocks event loop in async contexts)
+# OUTPUTS_DIR is created in setup_logging() when logging is initialized
+# Other directories are created when they are first used
 
 # =============================================================================
 # Weaviate defaults
