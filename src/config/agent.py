@@ -74,6 +74,17 @@ class AgentConfig(BaseConfig):
     analysis_model: str = field(
         default_factory=lambda: os.getenv("ANALYSIS_MODEL", "tngtech/tng-r1t-chimera:free")
     )
+
+    # RAG pipeline models (used by langgraph_server/nodes.py)
+    rag_quality_model: str = field(
+        default_factory=lambda: os.getenv("RAG_QUALITY_MODEL", "meta-llama/llama-3.3-8b-instruct:free")
+    )
+    rag_rewrite_model: str = field(
+        default_factory=lambda: os.getenv("RAG_REWRITE_MODEL", "meta-llama/llama-3.3-8b-instruct:free")
+    )
+    rag_answer_model: str = field(
+        default_factory=lambda: os.getenv("RAG_ANSWER_MODEL", "meta-llama/llama-3.1-405b-instruct:free")
+    )
     
     # Caching
     cache_enabled: bool = True

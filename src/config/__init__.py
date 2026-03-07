@@ -3,15 +3,14 @@ Unified configuration module for Code RAG.
 
 All configuration classes in one place:
 - SearchConfig: Search parameters
-- AgentConfig: LLM agent settings  
+- AgentConfig: LLM agent settings
 - CacheConfig: Caching settings
 - Neo4jConfig: Database connection
 - WeaviateConfig: Vector store connection
-- APISettings: REST API settings
 
 Usage:
     from src.config import SearchConfig, AgentConfig
-    
+
     config = SearchConfig(top_k=20, enable_reranking=True)
 """
 
@@ -22,7 +21,6 @@ from .search import SearchConfig, SearchStrategy
 from .agent import AgentConfig
 from .cache import CacheConfig
 from .database import Neo4jConfig, WeaviateConfig
-from .api import APISettings
 from .base import BaseConfig
 
 # =============================================================================
@@ -54,7 +52,7 @@ WEAVIATE_CLASS_NAME = "CodeEntity"
 # =============================================================================
 EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", "BAAI/bge-m3")
 EMBEDDING_DEVICE = "cuda" if os.environ.get("FORCE_CPU", "").lower() != "true" else "cpu"
-EMBEDDING_BATCH_SIZE = 128 if EMBEDDING_DEVICE == "cuda" else 16
+EMBEDDING_BATCH_SIZE = 32 if EMBEDDING_DEVICE == "cuda" else 16
 
 # =============================================================================
 # Search defaults
@@ -72,7 +70,6 @@ __all__ = [
     'CacheConfig',
     'Neo4jConfig',
     'WeaviateConfig',
-    'APISettings',
     'BaseConfig',
     # Path constants
     'PROJECT_ROOT',

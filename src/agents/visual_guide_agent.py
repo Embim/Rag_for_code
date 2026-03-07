@@ -93,7 +93,7 @@ Always respond in JSON format:
         diagram_generator: 'MermaidDiagramGenerator',  # String annotation to avoid circular import
         api_key: str,
         config: Optional[AgentConfig] = None,
-        api_base: str = "https://openrouter.ai/api/v1"
+        api_base: Optional[str] = None,
     ):
         """
         Initialize Visual Guide Agent.
@@ -103,7 +103,7 @@ Always respond in JSON format:
             diagram_generator: Mermaid diagram generator
             api_key: OpenRouter/OpenAI API key
             config: Agent configuration
-            api_base: API base URL
+            api_base: API base URL (defaults to AgentConfig.api_base)
         """
         self.code_explorer = code_explorer
         self.diagram_generator = diagram_generator
@@ -111,7 +111,7 @@ Always respond in JSON format:
 
         self.llm = AsyncOpenAI(
             api_key=api_key,
-            base_url=api_base,
+            base_url=api_base or self.config.api_base,
         )
 
     async def create_visualization(

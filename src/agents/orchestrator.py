@@ -76,7 +76,7 @@ Question: {question}"""
         code_explorer: CodeExplorerAgent,
         api_key: str,
         model: Optional[str] = None,
-        api_base: str = "https://openrouter.ai/api/v1",
+        api_base: Optional[str] = None,
         document_rag_pipeline=None,
         visual_agent: Optional[VisualGuideAgent] = None
     ):
@@ -87,12 +87,14 @@ Question: {question}"""
             code_explorer: Code Explorer Agent instance
             api_key: API key for classification LLM
             model: Model for classification (reads from ORCHESTRATOR_MODEL env if None)
-            api_base: API base URL
+            api_base: API base URL (defaults to AgentConfig.api_base)
             document_rag_pipeline: Optional RAGPipeline for document questions
             visual_agent: Optional Visual Guide Agent for visual questions
         """
+        from ..config.agent import AgentConfig
+        resolved_base = api_base or AgentConfig().api_base
         self.code_explorer = code_explorer
-        self.llm = AsyncOpenAI(api_key=api_key, base_url=api_base)
+        self.llm = AsyncOpenAI(api_key=api_key, base_url=resolved_base)
         self.model = model or os.getenv("ORCHESTRATOR_MODEL", "deepseek/deepseek-r1:free")
 
         # Document RAG pipeline (from src/retrieval.py)

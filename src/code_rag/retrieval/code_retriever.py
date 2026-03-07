@@ -10,7 +10,6 @@ Implements multi-hop graph traversal strategies for finding code entities:
 
 from typing import List, Dict, Any, Optional, Set, Tuple
 from dataclasses import dataclass, field
-from enum import Enum
 from pathlib import Path
 
 from ..graph import Neo4jClient, WeaviateIndexer
@@ -22,17 +21,15 @@ from .multi_hop_optimizer import (
 )
 from ...logger import get_logger
 
+# SearchStrategy is defined in src/config/search.py (single source of truth).
+# We import from there to avoid a circular dependency:
+#   code_retriever → graph → neo4j_client → logger → src.config → config.search
+# Importing from config.search here is safe because config.search does not
+# import from code_rag at module level.
+from ...config.search import SearchStrategy  # noqa: F401 — re-exported via __init__
+
 
 logger = get_logger(__name__)
-
-
-class SearchStrategy(str, Enum):
-    """Available search strategies."""
-    UI_TO_DATABASE = "ui_to_database"
-    DATABASE_TO_UI = "database_to_ui"
-    IMPACT_ANALYSIS = "impact_analysis"
-    PATTERN_SEARCH = "pattern_search"
-    SEMANTIC_ONLY = "semantic_only"  # Pure vector search
 
 
 @dataclass
@@ -241,6 +238,11 @@ class CodeRetriever:
 
         # Step 1: Initial semantic/keyword search (with reformulated query)
         primary_nodes = self._initial_search(working_query, config)
+
+        # Step 1b: Enrich primary nodes with real code from Neo4j + deep neighbors
+        # Weaviate stores empty 'code' field; Neo4j has full source + surrounding context
+        if primary_nodes:
+            primary_nodes = self._enrich_from_neo4j(primary_nodes)
 
         if not primary_nodes:
             logger.warning(f"No results found for query: '{query}' (working query: '{working_query}')")
@@ -717,6 +719,82 @@ class CodeRetriever:
                 continue
 
         return expanded, relationships
+
+    def _enrich_from_neo4j(
+        self,
+        nodes: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        """
+        Fetch full node data from Neo4j to fix empty 'code' field from Weaviate.
+
+        Weaviate stores a short searchable 'content' string (~85 chars) and empty 'code'.
+        Neo4j has the full source code in 'code' property.
+
+        Also fetches deep neighbors (parent class, callees, sibling methods at depth 1-2)
+        and appends them to the returned list so the context covers surrounding code.
+        """
+        if not nodes:
+            return nodes
+
+        node_ids = [n.get('node_id') or n.get('id') for n in nodes]
+        node_ids = [nid for nid in node_ids if nid]
+        if not node_ids:
+            return nodes
+
+        try:
+            # Fetch primary nodes AND their deep neighbors in one query
+            cypher = """
+            MATCH (n:GraphNode)
+            WHERE n.id IN $ids
+            OPTIONAL MATCH (n)-[:CALLS|CONTAINS|INHERITS]-(nb:GraphNode)
+            WHERE nb.code IS NOT NULL AND nb.code <> ''
+            WITH n, collect(DISTINCT nb)[..5] AS neighbors
+            RETURN n, neighbors
+            """
+            result = self.neo4j.execute_cypher(cypher, ids=node_ids)
+
+            neo4j_by_id: Dict[str, Any] = {}
+            neighbor_pool: List[Dict[str, Any]] = []
+            seen_neighbor_ids: Set[str] = set(node_ids)
+
+            for record in result:
+                n_data = dict(record['n'])
+                neo4j_by_id[n_data['id']] = n_data
+
+                for nb in record.get('neighbors', []) or []:
+                    if nb is None:
+                        continue
+                    nb_dict = dict(nb)
+                    nb_id = nb_dict.get('id')
+                    if nb_id and nb_id not in seen_neighbor_ids:
+                        seen_neighbor_ids.add(nb_id)
+                        nb_dict['source'] = 'graph'
+                        neighbor_pool.append(nb_dict)
+
+            # Merge real code back into primary nodes
+            enriched_primary = []
+            for node in nodes:
+                node_id = node.get('node_id') or node.get('id')
+                if node_id and node_id in neo4j_by_id:
+                    neo4j_data = neo4j_by_id[node_id]
+                    node = {
+                        **node,
+                        'code': neo4j_data.get('code', ''),
+                        'signature': neo4j_data.get('signature', node.get('signature', '')),
+                        'docstring': neo4j_data.get('docstring', node.get('docstring', '')),
+                    }
+                enriched_primary.append(node)
+
+            logger.info(
+                f"Neo4j enrichment: {len(enriched_primary)} primary nodes updated, "
+                f"{len(neighbor_pool)} neighbor nodes added"
+            )
+
+            return enriched_primary + neighbor_pool
+
+        except Exception as e:
+            logger.warning(f"Neo4j enrichment failed: {e}")
+            return nodes
 
     def enrich_with_call_graph(
         self,

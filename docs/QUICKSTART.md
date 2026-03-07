@@ -1,14 +1,13 @@
-# Code RAG - Быстрый старт
+# Code RAG -- Быстрый старт
 
 ## Требования
 
-- Python 3.10+
-- Docker
-- OpenRouter API ключ (бесплатно: https://openrouter.ai/keys)
+Для работы проекта нужны Python 3.10 или выше, Docker и API-ключ OpenRouter (получить бесплатно можно на https://openrouter.ai/keys).
 
----
 
-## 1. Установка
+## Установка
+
+Клонируйте репозиторий, создайте виртуальное окружение и установите зависимости:
 
 ```bash
 git clone <repo_url> rag-for-code
@@ -20,76 +19,85 @@ source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
----
 
-## 2. Конфигурация
+## Конфигурация
 
-Создайте `.env`:
+Создайте файл `.env` в корне проекта со следующими переменными:
 
-```bash
+```
 NEO4J_PASSWORD=your_password
 OPENROUTER_API_KEY=sk-or-v1-...
-TELEGRAM_BOT_TOKEN=123456:ABC...  # опционально
-
-# LangSmith для мониторинга LangGraph (опционально, но рекомендуется)
-# Получите бесплатный ключ: https://smith.langchain.com/
-LANGSMITH_API_KEY=lsv2_pt_...
+TELEGRAM_BOT_TOKEN=123456:ABC...
 ```
 
----
+Telegram-токен указывать не обязательно -- он нужен только если вы планируете использовать Telegram-бота.
 
-## 3. Запуск инфраструктуры
+Для трейсинга через Langfuse (рекомендуется) добавьте:
+
+```
+LANGFUSE_PUBLIC_KEY=pk-lf-...
+LANGFUSE_SECRET_KEY=sk-lf-...
+LANGFUSE_HOST=https://cloud.langfuse.com   # или http://localhost:3000 для self-hosted
+```
+
+Получить ключи: https://cloud.langfuse.com (бесплатный тариф есть)
+
+
+## Запуск инфраструктуры
+
+Поднимите Neo4j и Weaviate через Docker:
 
 ```bash
 docker-compose up -d
-
-# Проверка
 docker-compose ps
-# Neo4j: http://localhost:7474
-# Weaviate: http://localhost:8080/v1/meta
 ```
 
----
+После запуска Neo4j будет доступен на http://localhost:7474, Weaviate -- на http://localhost:8080/v1/meta.
 
-## 4. Запуск API
+
+## Запуск API
 
 ```bash
 source .venv/bin/activate
 uvicorn src.api.main:app --host 0.0.0.0 --port 8000
 ```
 
-**Документация:** http://localhost:8000/docs
+Swagger-документация будет доступна по адресу http://localhost:8000/docs. При первом запуске сервер создаст admin API-ключ -- сохраните его, он понадобится для всех последующих запросов.
 
-При первом запуске будет создан admin API-ключ — **сохраните его!**
 
----
+## Индексация репозитория
 
-## 5. Добавление репозитория
-python -m src.code_rag.graph.build_and_index G:\ui.bo  --clear
+Есть два способа добавить репозиторий для анализа.
 
-python -m src.code_rag.graph.build_and_index G:\api.bo 
+Через CLI напрямую (рекомендуется для локальных проектов):
+
 ```bash
-# GitHub URL
+python -m src.code_rag.graph.build_and_index /path/to/repo --clear
+```
+
+Флаг `--clear` очищает предыдущие данные перед индексацией. Без него новые данные добавятся к существующим.
+
+Через API:
+
+```bash
 curl -X POST "http://localhost:8000/api/repos" \
   -H "X-API-Key: <admin_key>" \
   -H "Content-Type: application/json" \
   -d '{"source": "https://github.com/org/repo.git", "name": "repo", "type": "backend"}'
+```
 
-# Локальный путь
-curl -X POST "http://localhost:8000/api/repos" \
-  -H "X-API-Key: <admin_key>" \
-  -H "Content-Type: application/json" \
-  -d '{"source": "C:/Projects/myapp", "name": "myapp", "type": "frontend"}'
+Вместо GitHub URL можно указать локальный путь. Поле type принимает значения backend, frontend и другие -- это метка для удобства, на логику не влияет.
 
-# Проверить статус
+Проверить статус индексации:
+
+```bash
 curl "http://localhost:8000/api/repos/<name>/status" -H "X-API-Key: <key>"
 ```
 
----
 
-## 6. Использование
+## Использование
 
-### Поиск
+Поиск по коду:
 
 ```bash
 curl -X POST "http://localhost:8000/api/search" \
@@ -98,9 +106,18 @@ curl -X POST "http://localhost:8000/api/search" \
   -d '{"query": "authentication", "strategy": "hybrid", "limit": 10}'
 ```
 
-**Стратегии:** `semantic`, `hybrid`, `bm25`, `ui_to_database`, `database_to_ui`
+Доступные стратегии поиска: semantic, hybrid, bm25, ui_to_database, database_to_ui.
 
-### Вопрос агенту
+RAG-пайплайн с итеративным улучшением (рекомендуется):
+
+```bash
+curl -X POST "http://localhost:8000/api/ask/langgraph" \
+  -H "X-API-Key: <key>" \
+  -H "Content-Type: application/json" \
+  -d '{"question": "как работает авторизация", "max_iterations": 3}'
+```
+
+Вопрос агенту (глубокий анализ с несколькими инструментами):
 
 ```bash
 curl -X POST "http://localhost:8000/api/ask" \
@@ -109,152 +126,101 @@ curl -X POST "http://localhost:8000/api/ask" \
   -d '{"question": "как работает авторизация"}'
 ```
 
----
 
-## 7. Telegram бот
+## Telegram-бот
+
+Если в `.env` указан TELEGRAM_BOT_TOKEN, можно запустить бота:
 
 ```bash
-export TELEGRAM_BOT_TOKEN=your_token
 python -m src.telegram_bot.bot
 ```
 
-**Команды:**
-- `/ask <вопрос>` — вопрос по коду
-- `/analyze <traceback>` — анализ ошибки
-- `/repos` — список репозиториев
+Команды бота: `/ask <вопрос>` -- задать вопрос по коду, `/analyze <traceback>` -- проанализировать ошибку, `/repos` -- посмотреть список проиндексированных репозиториев.
 
----
 
-## 8. LangGraph Server + Langfuse
+## RAG Pipeline
 
-Агентный RAG с визуализацией и мониторингом.
+RAG-пайплайн работает прямо внутри API-сервера -- отдельный сервер не нужен. Логика: собирает контекст из базы, оценивает качество с помощью LLM, и если оценка ниже порога 0.6, переписывает запрос и повторяет поиск. Когда качество достаточное, генерирует финальный ответ.
 
-### Архитектура
+Использование напрямую из кода:
 
-```
-┌─────────────────────────────────────────────────────────┐
-│  LangGraph Server (localhost:2024)                      │
-│                                                         │
-│  context_collector → quality_checker → [decision]       │
-│         ▲                                  │            │
-│         │              ┌───────────────────┤            │
-│         │              │                   │            │
-│         │         score < 0.6         score >= 0.6      │
-│         │              │                   │            │
-│         └── query_rewriter            answer_generator  │
-│                                            │            │
-│                                           END           │
-└─────────────────────────────────────────────────────────┘
-                         │ traces
-                         ▼
-┌─────────────────────────────────────────────────────────┐
-│  Langfuse (cloud.langfuse.com)                          │
-│  📊 Метрики  │  🔍 Трейсы  │  💰 Стоимость токенов     │
-└─────────────────────────────────────────────────────────┘
+```python
+from src.langgraph_server import run_rag
+
+result = run_rag("Как работает checkout?", max_iterations=3)
+print(result["answer"])
+print(result["sources"])
+print(f"Iterations: {result['iterations']}, Quality: {result['quality_score']:.2f}")
 ```
 
-### Настройка Langfuse
 
-1. Зарегистрируйтесь: https://cloud.langfuse.com
-2. Создайте проект и получите ключи
+## Трейсинг через Langfuse
+
+Langfuse позволяет видеть в дашборде каждый RAG-запрос: что нашёл поиск, что передали в LLM и что получили в ответ. Для каждого запроса через `/ask/langgraph` в Langfuse появляется трейс с вложенными спанами:
+
+```
+Trace: rag_pipeline  (input: query)
+├── Span: context_collector  — что нашёл векторный поиск
+├── Generation: quality_check  — оценка качества контекста
+├── Generation: query_rewrite  — (только если нужен rewrite)
+└── Generation: answer_generator  — финальный ответ
+```
+
+**Вариант 1 — облако** (быстрый старт, бесплатный тариф):
+
+1. Зарегистрируйтесь на https://cloud.langfuse.com
+2. Создайте проект, скопируйте ключи
 3. Добавьте в `.env`:
 
-```bash
+```
 LANGFUSE_PUBLIC_KEY=pk-lf-...
 LANGFUSE_SECRET_KEY=sk-lf-...
 LANGFUSE_HOST=https://cloud.langfuse.com
 ```
 
-### Запуск LangGraph Server
+**Вариант 2 — self-hosted** (данные остаются локально):
 
 ```bash
-# Установка
-pip install langgraph-cli langfuse
-
-# Запуск сервера
-cd src/langgraph_server
-langgraph dev
+# Добавьте сервисы в docker-compose.yml или запустите отдельно:
+docker run --name langfuse \
+  -e DATABASE_URL=postgresql://... \
+  -e NEXTAUTH_SECRET=<random> \
+  -e SALT=<random> \
+  -p 3000:3000 \
+  langfuse/langfuse:latest
 ```
 
-Сервер: http://127.0.0.1:2024
-
-### Использование
-
-**Python SDK:**
-```python
-from langgraph_sdk import get_client
-
-client = get_client(url="http://127.0.0.1:2024")
-
-# Создать запуск
-result = await client.runs.create(
-    assistant_id="rag",
-    input={"query": "Как работает аутентификация?"}
-)
-print(result)
-```
-
-**Напрямую из кода:**
-```python
-from src.langgraph_server import run_rag
-
-result = run_rag("Как работает checkout?")
-print(result["answer"])
-print(result["sources"])
-print(f"Итераций: {result['iterations']}, Качество: {result['quality_score']}")
-```
-
-**cURL:**
-```bash
-curl -X POST http://127.0.0.1:2024/runs \
-  -H "Content-Type: application/json" \
-  -d '{"assistant_id": "rag", "input": {"query": "authentication flow"}}'
-```
-
-### Мониторинг в Langfuse
-
-После запросов откройте https://cloud.langfuse.com:
-
-- **Traces** — полная цепочка выполнения
-- **Generations** — каждый вызов LLM
-- **Metrics** — латентность, токены, стоимость
-- **Scores** — качество контекста (quality_score)
-
----
-
-## 9. Troubleshooting
-
-### Neo4j не запускается
+Либо используйте официальный docker-compose из репозитория Langfuse:
 
 ```bash
-docker-compose logs neo4j
-docker-compose restart neo4j
+git clone https://github.com/langfuse/langfuse.git
+cd langfuse
+docker-compose up -d
 ```
 
-### Агенты не работают
+Дашборд откроется на http://localhost:3000. Добавьте в `.env`:
 
-Проверьте `OPENROUTER_API_KEY`:
-```bash
-echo $OPENROUTER_API_KEY
+```
+LANGFUSE_HOST=http://localhost:3000
 ```
 
-### Медленный поиск
+После настройки ключей все запросы через `/ask/langgraph` автоматически появляются в Langfuse Dashboard.
 
-Используйте `strategy: "semantic"` вместо `"hybrid"` или уменьшите `limit`.
 
----
+## Решение проблем
+
+Если Neo4j не запускается, проверьте логи контейнера командой `docker-compose logs neo4j` и попробуйте перезапустить: `docker-compose restart neo4j`.
+
+Если агенты возвращают ошибки, убедитесь что переменная OPENROUTER_API_KEY задана и ключ валидный.
+
+Если поиск работает медленно, попробуйте стратегию semantic вместо hybrid или уменьшите параметр limit.
+
 
 ## Полезные команды
 
 ```bash
-docker-compose ps          # статус контейнеров
-docker-compose logs -f     # логи
-docker-compose down -v     # удалить всё (включая данные!)
-
-curl http://localhost:8000/api/health  # проверка API
+docker-compose ps            # статус контейнеров
+docker-compose logs -f       # логи в реальном времени
+docker-compose down -v       # остановить и удалить все данные
+curl http://localhost:8000/api/health   # проверка работоспособности API
 ```
-
----
-
-**Документация API:** http://localhost:8000/docs
-

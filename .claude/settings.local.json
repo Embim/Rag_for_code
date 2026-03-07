@@ -28,7 +28,14 @@
       "WebFetch(domain:docs.weaviate.io)",
       "WebFetch(domain:forum.weaviate.io)",
       "WebFetch(domain:weaviate-python-client.readthedocs.io)",
-      "Bash(.venvScriptspython.exe -m pip install python-docx pillow)"
+      "Bash(.venvScriptspython.exe -m pip install python-docx pillow)",
+      "Bash(read f:*)",
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "Bash(ls:*)",
+      "Bash(du:*)",
+      "Bash(rm:*)",
+      "Bash(.venv/Scripts/python.exe:*)"
     ],
     "deny": [],
     "ask": []

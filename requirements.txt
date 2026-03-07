@@ -72,4 +72,4 @@ langgraph-cli>=0.1.0
 langgraph-sdk>=0.1.0
 
 # Langfuse for LLM observability
-langfuse>=2.0.0
+langfuse>=3.0.0

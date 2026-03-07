@@ -115,7 +115,7 @@ async def lifespan_context(app):
         logger.info("✅ Troubleshooter initialized")
 
         # Initialize agents (if enabled)
-        if settings.agents.enabled and settings.agents.openrouter_api_key:
+        if settings.agents.enabled and settings.agents.api_key:
             logger.info("Initializing agent system...")
 
             # Initialize tools
@@ -132,15 +132,15 @@ async def lifespan_context(app):
 
             # Initialize Code Explorer Agent
             agent_config = AgentConfigModel(
-                max_iterations=settings.agents.code_explorer_max_iterations,
-                timeout_seconds=settings.agents.code_explorer_timeout,
+                max_iterations=settings.agents.max_iterations,        # was: code_explorer_max_iterations
+                timeout_seconds=settings.agents.timeout_seconds,       # was: code_explorer_timeout
                 temperature=0.1,
                 code_explorer_model=settings.agents.code_explorer_model,
             )
 
             code_explorer = CodeExplorerAgent(
                 tools=tools,
-                api_key=settings.agents.openrouter_api_key,
+                api_key=settings.agents.api_key,                       # was: openrouter_api_key
                 config=agent_config,
             )
 
@@ -148,7 +148,7 @@ async def lifespan_context(app):
             visual_agent = VisualGuideAgent(
                 code_explorer=code_explorer,
                 diagram_generator=app_state.visualizer,
-                api_key=settings.agents.openrouter_api_key,
+                api_key=settings.agents.api_key,                       # was: openrouter_api_key
                 config=agent_config,
             )
 
@@ -164,7 +164,7 @@ async def lifespan_context(app):
             # Initialize orchestrator
             app_state.orchestrator = QueryOrchestrator(
                 code_explorer=code_explorer,
-                api_key=settings.agents.openrouter_api_key,
+                api_key=settings.agents.api_key,               # was: openrouter_api_key
                 model=settings.agents.orchestrator_model,
                 visual_agent=visual_agent,
             )

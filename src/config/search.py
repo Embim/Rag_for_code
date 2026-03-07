@@ -11,14 +11,20 @@ from .base import BaseConfig
 
 
 class SearchStrategy(str, Enum):
-    """Available search strategies."""
-    SEMANTIC_ONLY = "semantic_only"
-    BM25_ONLY = "bm25_only"
-    HYBRID = "hybrid"
-    MULTI_HOP = "multi_hop"
+    """Available search strategies — single source of truth.
+
+    code_retriever.py imports from here to avoid circular imports.
+    """
+    # Pure retrieval strategies
+    SEMANTIC_ONLY = "semantic_only"   # Pure vector search
+    BM25_ONLY = "bm25_only"           # Pure keyword search
+    HYBRID = "hybrid"                  # Balanced vector + keyword
+    MULTI_HOP = "multi_hop"            # Multi-hop graph traversal
+    # Graph traversal strategies
     UI_TO_DATABASE = "ui_to_database"
     DATABASE_TO_UI = "database_to_ui"
     IMPACT_ANALYSIS = "impact_analysis"
+    PATTERN_SEARCH = "pattern_search"
 
 
 @dataclass
@@ -99,10 +105,10 @@ class SearchConfig(BaseConfig):
             config.max_hops = max(3, self.max_hops)
             config.enable_reranking = True
         elif strategy in (SearchStrategy.UI_TO_DATABASE, SearchStrategy.DATABASE_TO_UI):
-            config.max_hops = 10
+            config.max_hops = 50
             config.enable_reranking = True
         elif strategy == SearchStrategy.IMPACT_ANALYSIS:
-            config.max_hops = 10
+            config.max_hops = 50
             config.top_k = max(50, self.top_k)  # Increased from 20 to 50
         
         return config

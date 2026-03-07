@@ -8,8 +8,11 @@ This component bridges Neo4j knowledge graph and Weaviate vector search:
 4. Enables hybrid search (graph structure + semantic similarity)
 """
 
+import gc
 import json
 from typing import List, Dict, Any, Optional, Tuple, TYPE_CHECKING
+
+from tqdm import tqdm
 
 if TYPE_CHECKING:
     from .neo4j_client import Neo4jClient
@@ -68,11 +71,18 @@ class WeaviateIndexer:
         # Initialize Weaviate client
         # skip_init_checks=True prevents event loop conflict with LangGraph async worker
         try:
+            from weaviate.classes.init import AdditionalConfig, Timeout as WeaviateTimeout
             print(f"[WEAVIATE] Connecting to {weaviate_url}...", flush=True)
+            host = weaviate_url.replace("http://", "").replace("https://", "").split(":")[0]
+            port = int(weaviate_url.split(":")[-1]) if ":" in weaviate_url else 8080
             self.client = weaviate.connect_to_local(
-                host=weaviate_url.replace("http://", "").replace("https://", "").split(":")[0],
-                port=int(weaviate_url.split(":")[-1]) if ":" in weaviate_url else 8080,
+                host=host,
+                port=port,
+                grpc_port=50051,  # Explicit gRPC port (matches docker-compose)
                 skip_init_checks=True,  # Prevent deadlock in async context (LangGraph)
+                additional_config=AdditionalConfig(
+                    timeout=WeaviateTimeout(init=10, query=60, insert=120)
+                ),
             )
             # Verify connection manually since we skipped init checks
             if not self.client.is_ready():
@@ -101,26 +111,10 @@ class WeaviateIndexer:
             print(f"[WEAVIATE] Loading embedding model: {self._embedding_model_name} (called from {caller_info})...", flush=True)
             logger.info(f"Loading embedding model: {self._embedding_model_name} (called from {caller_info})")
             try:
-                # #region agent log
-                import json, time
-                with open(r'c:\Users\petrc\OneDrive\Documents\Проекты\ПроетыПоРаботу\Rag_for_code\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                    import torch
-                    cuda_available = torch.cuda.is_available() if hasattr(torch, 'cuda') else False
-                    cuda_device_count = torch.cuda.device_count() if cuda_available else 0
-                    f.write(json.dumps({"sessionId":"debug-session","runId":"sync-weaviate-lazy","hypothesisId":"F","location":"weaviate_indexer.py:141","message":"Sync WeaviateIndexer lazy load - before model load","data":{"model_name":self._embedding_model_name,"cuda_available":cuda_available,"cuda_device_count":cuda_device_count},"timestamp":int(time.time()*1000)}) + '\n')
-                # #endregion
-                
                 # Lazy import to avoid blocking file system operations during module import
                 from sentence_transformers import SentenceTransformer
-                
+
                 self._embedding_model = SentenceTransformer(self._embedding_model_name)
-                # #region agent log
-                with open(r'c:\Users\petrc\OneDrive\Documents\Проекты\ПроетыПоРаботу\Rag_for_code\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                    import torch
-                    device = str(self._embedding_model.device) if hasattr(self._embedding_model, 'device') else None
-                    cuda_available = torch.cuda.is_available() if hasattr(torch, 'cuda') else False
-                    f.write(json.dumps({"sessionId":"debug-session","runId":"sync-weaviate-lazy","hypothesisId":"F","location":"weaviate_indexer.py:149","message":"Sync WeaviateIndexer lazy load - model loaded","data":{"model_device":device,"cuda_available":cuda_available},"timestamp":int(time.time()*1000)}) + '\n')
-                # #endregion
                 self._embedding_dim = self._embedding_model.get_sentence_embedding_dimension()
                 logger.info(f"Embedding model loaded (dimension: {self._embedding_dim})")
                 print(f"[WEAVIATE] Embedding model loaded (dimension: {self._embedding_dim})", flush=True)
@@ -230,39 +224,42 @@ class WeaviateIndexer:
         """
         parts = []
 
-        # Node name
+        # Node name and type
         parts.append(f"Name: {node.name}")
-
-        # Node type
         parts.append(f"Type: {node.type.value}")
 
-        # Type-specific content
-        if hasattr(node, 'signature') and node.properties.get('signature'):
+        # Module/package context from file path (e.g. "position_keeping.main" from path)
+        file_path = node.properties.get('file_path', '')
+        if file_path:
+            parts.append(f"File: {file_path}")
+            # Extract module path for semantic context
+            module = file_path.replace('\\', '/').replace('/', '.').removesuffix('.py')
+            if module:
+                parts.append(f"Module: {module}")
+
+        # Signature
+        if node.properties.get('signature'):
             parts.append(f"Signature: {node.properties['signature']}")
 
-        if hasattr(node, 'docstring') and node.properties.get('docstring'):
+        # Docstring — high semantic value, put early
+        if node.properties.get('docstring'):
             docstring = node.properties['docstring'].strip()
             if docstring:
                 parts.append(f"Documentation: {docstring}")
 
-        # CRITICAL: Include full source code for better semantic search
-        # This enables the LLM to understand the actual logic and implementation
+        # Source code — 8000 chars (~300 lines) for large files like views.py
         if node.properties.get('code'):
-            code = node.properties['code'].strip()
+            code = node.properties['code'][:8000].strip()
             if code:
                 parts.append(f"Code:\n{code}")
 
-        # File path context
-        if node.properties.get('file_path'):
-            parts.append(f"File: {node.properties['file_path']}")
-
-        # For endpoints, include HTTP method and path
+        # Type-specific extras
         if node.type == NodeType.ENDPOINT:
             method = node.properties.get('http_method', '')
             path = node.properties.get('path', '')
-            parts.append(f"Endpoint: {method} {path}")
+            if method or path:
+                parts.append(f"Endpoint: {method} {path}")
 
-        # For components, include props and hooks
         if node.type == NodeType.COMPONENT:
             props = node.properties.get('props_type', '')
             if props:
@@ -271,10 +268,10 @@ class WeaviateIndexer:
             if hooks:
                 parts.append(f"Hooks: {hooks}")
 
-        # For models, include fields
         if node.type == NodeType.MODEL:
             model_type = node.properties.get('model_type', '')
-            parts.append(f"Model type: {model_type}")
+            if model_type:
+                parts.append(f"Model type: {model_type}")
 
         return "\n".join(parts)
 
@@ -316,7 +313,7 @@ class WeaviateIndexer:
         indexed_count = 0
 
         # Process in batches
-        for i in range(0, len(nodes), batch_size):
+        for i in tqdm(range(0, len(nodes), batch_size), desc="Indexing batches", unit="batch"):
             batch = nodes[i:i + batch_size]
 
             # Prepare data for batch
@@ -364,6 +361,15 @@ class WeaviateIndexer:
                 indexed_count += len(batch)
                 logger.info(f"Indexed batch {i // batch_size + 1}: {indexed_count}/{len(nodes)} nodes")
 
+                # Free GPU memory between batches to prevent fragmentation
+                gc.collect()
+                try:
+                    import torch
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                except ImportError:
+                    pass
+
             except Exception as e:
                 logger.error(f"Failed to index batch {i // batch_size + 1}: {e}")
                 continue
@@ -403,7 +409,7 @@ class WeaviateIndexer:
 
         total_indexed = 0
 
-        for node_type in node_types:
+        for node_type in tqdm(node_types, desc="Indexing node types", unit="type"):
             logger.info(f"Fetching {node_type.value} nodes from Neo4j...")
 
             # Fetch nodes of this type

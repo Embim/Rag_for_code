@@ -2,11 +2,12 @@
 Configuration for FastAPI application.
 
 Loads settings from config/base.yaml and environment variables.
+Uses canonical config classes from src/config/ — no duplicate definitions here.
 """
 
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 import yaml
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
@@ -14,37 +15,15 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
-
-class Neo4jConfig(BaseModel):
-    """Neo4j configuration."""
-    uri: str = "bolt://localhost:7687"
-    user: str = "neo4j"
-    password: str
-    database: str = "code_rag"
+# ─── Re-use canonical config classes from src/config ─────────────────────────
+from ..config.database import Neo4jConfig, WeaviateConfig  # noqa: F401 — public re-export
+from ..config.agent import AgentConfig  # noqa: F401 — public re-export
 
 
-class WeaviateConfig(BaseModel):
-    """Weaviate configuration."""
-    url: str = "http://localhost:8080"
-    timeout: int = 30
-
-
-class AgentConfig(BaseModel):
-    """Agent configuration."""
-    enabled: bool = True
-    openrouter_api_key: Optional[str] = None
-    code_explorer_max_iterations: int = 20
-    code_explorer_timeout: int = 600
-    code_explorer_model: str = "tngtech/tng-r1t-chimera:free"  # 163k context, enhanced tool-calling
-    orchestrator_model: str = "deepseek/deepseek-r1:free"
-    cache_enabled: bool = True
-    cache_backend: str = "memory"
-    query_ttl: int = 86400
-    tool_result_ttl: int = 3600
-
+# ─── APISettings (Pydantic, YAML-backed) ─────────────────────────────────────
 
 class APISettings(BaseModel):
-    """FastAPI application settings."""
+    """FastAPI application settings — loaded from config/base.yaml."""
 
     # API metadata
     title: str = "Code RAG API"
@@ -54,23 +33,23 @@ class APISettings(BaseModel):
     # Server settings
     host: str = "0.0.0.0"
     port: int = 8000
-    reload: bool = False  # Set to True for development
+    reload: bool = False
 
     # CORS settings
-    cors_origins: list = Field(default_factory=lambda: ["*"])
+    cors_origins: List[str] = Field(default_factory=lambda: ["*"])
     cors_allow_credentials: bool = True
-    cors_allow_methods: list = Field(default_factory=lambda: ["*"])
-    cors_allow_headers: list = Field(default_factory=lambda: ["*"])
+    cors_allow_methods: List[str] = Field(default_factory=lambda: ["*"])
+    cors_allow_headers: List[str] = Field(default_factory=lambda: ["*"])
 
-    # Database configs
-    neo4j: Neo4jConfig
-    weaviate: WeaviateConfig
-
-    # Agent config
-    agents: AgentConfig
+    # Sub-configs (Pydantic accepts arbitrary types via model_config)
+    neo4j: Neo4jConfig = Field(default_factory=Neo4jConfig)
+    weaviate: WeaviateConfig = Field(default_factory=WeaviateConfig)
+    agents: AgentConfig = Field(default_factory=AgentConfig)
 
     # Paths
     repos_dir: Path = Path("data/repos")
+
+    model_config = {"arbitrary_types_allowed": True}
 
     @classmethod
     def from_yaml(cls, config_path: Path) -> "APISettings":
@@ -78,15 +57,13 @@ class APISettings(BaseModel):
         with open(config_path, 'r', encoding='utf-8') as f:
             config = yaml.safe_load(f)
 
-        # Parse Neo4j config
+        # ── Neo4j ──────────────────────────────────────────────────────────────
         neo4j_password = os.getenv("NEO4J_PASSWORD")
         if not neo4j_password:
-            # Try to extract from ${...} placeholder
             password_placeholder = config['neo4j'].get('password', '')
             if password_placeholder.startswith('${') and password_placeholder.endswith('}'):
                 env_var = password_placeholder[2:-1]
                 neo4j_password = os.getenv(env_var)
-
             if not neo4j_password:
                 raise ValueError("NEO4J_PASSWORD environment variable is required")
 
@@ -94,52 +71,46 @@ class APISettings(BaseModel):
             uri=config['neo4j']['uri'],
             user=config['neo4j']['user'],
             password=neo4j_password,
-            database=config['neo4j'].get('database', 'code_rag')
+            database=config['neo4j'].get('database', 'neo4j'),
         )
 
-        # Parse Weaviate config
+        # ── Weaviate ───────────────────────────────────────────────────────────
         weaviate_config = WeaviateConfig(
             url=config['weaviate']['url'],
-            timeout=config['weaviate'].get('timeout', 30)
         )
 
-        # Parse Agent config
+        # ── Agents ────────────────────────────────────────────────────────────
         openrouter_key = os.getenv("OPENROUTER_API_KEY")
         agents_enabled = openrouter_key is not None
 
         agent_config = AgentConfig(
             enabled=agents_enabled,
-            openrouter_api_key=openrouter_key,
-            code_explorer_max_iterations=config['agents']['code_explorer'].get('max_iterations', 20),
-            code_explorer_timeout=config['agents']['code_explorer'].get('timeout_seconds', 600),
+            api_key=openrouter_key,                                           # was: openrouter_api_key
             code_explorer_model=config['agents']['code_explorer'].get('model', 'tngtech/tng-r1t-chimera:free'),
             orchestrator_model=config['agents']['orchestrator'].get('model', 'deepseek/deepseek-r1:free'),
+            max_iterations=config['agents']['code_explorer'].get('max_iterations', 20),  # was: code_explorer_max_iterations
+            timeout_seconds=config['agents']['code_explorer'].get('timeout_seconds', 600.0),  # was: code_explorer_timeout
             cache_enabled=config['agents']['cache'].get('enabled', True),
             cache_backend=config['agents']['cache'].get('backend', 'memory'),
             query_ttl=config['agents']['cache'].get('query_ttl', 86400),
-            tool_result_ttl=config['agents']['cache'].get('tool_result_ttl', 3600)
+            tool_result_ttl=config['agents']['cache'].get('tool_result_ttl', 3600),
         )
 
-        # Parse repos directory
         repos_dir = Path(config.get('directories', {}).get('repos', 'data/repos'))
 
-        # Get API-specific settings from env or defaults
-        host = os.getenv("API_HOST", "0.0.0.0")
-        port = int(os.getenv("API_PORT", "8000"))
-        reload = os.getenv("API_RELOAD", "false").lower() == "true"
-
         return cls(
-            host=host,
-            port=port,
-            reload=reload,
+            host=os.getenv("API_HOST", "0.0.0.0"),
+            port=int(os.getenv("API_PORT", "8000")),
+            reload=os.getenv("API_RELOAD", "false").lower() == "true",
             neo4j=neo4j_config,
             weaviate=weaviate_config,
             agents=agent_config,
-            repos_dir=repos_dir
+            repos_dir=repos_dir,
         )
 
 
-# Global settings instance
+# ─── Singleton ────────────────────────────────────────────────────────────────
+
 _settings: Optional[APISettings] = None
 
 

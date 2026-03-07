@@ -13,6 +13,8 @@ from pathlib import Path
 from typing import Optional, List
 import argparse
 
+from tqdm import tqdm
+
 from ..repo_loader import RepositoryLoader
 from ..parsers import get_parser
 from .neo4j_client import Neo4jClient
@@ -126,7 +128,7 @@ class GraphPipeline:
                      list(repo_info.path.rglob('*.ts')) + \
                      list(repo_info.path.rglob('*.tsx'))
 
-        for file_path in code_files:
+        for file_path in tqdm(code_files, desc="Parsing files", unit="file"):
             # Skip if not a file (e.g., directories with extensions in name)
             if not file_path.is_file():
                 continue

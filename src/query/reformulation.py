@@ -150,17 +150,18 @@ class QueryReformulator:
         if self._client is None:
             import os
             from openai import OpenAI
-            
+            from ..config.agent import AgentConfig
+
             api_key = self._api_key or os.getenv("OPENROUTER_API_KEY")
             if not api_key:
                 raise ValueError(
                     "OPENROUTER_API_KEY not set. "
                     "Get free key at https://openrouter.ai/keys"
                 )
-            
+
             self._client = OpenAI(
                 api_key=api_key,
-                base_url="https://openrouter.ai/api/v1"
+                base_url=AgentConfig().api_base,
             )
         return self._client
     

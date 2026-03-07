@@ -334,15 +334,16 @@ class Neo4jClient:
             List of matching nodes
         """
         with self._driver.session(database=self.database) as session:
-            # Build query
-            if node_type:
-                match_clause = f"MATCH (n:{node_type.value})"
-            else:
-                match_clause = "MATCH (n:GraphNode)"
+            # Always match on :GraphNode to avoid warnings for missing labels
+            match_clause = "MATCH (n:GraphNode)"
 
             # Add property filters
             where_clauses = []
             params = {'limit': limit}
+
+            if node_type:
+                where_clauses.append("n.type = $node_type")
+                params['node_type'] = node_type.value
 
             if properties:
                 for key, value in properties.items():
@@ -426,7 +427,8 @@ class Neo4jClient:
             node_counts = {}
             for node_type in NodeType:
                 result = session.run(
-                    f"MATCH (n:{node_type.value}) RETURN count(n) as count"
+                    "MATCH (n:GraphNode) WHERE n.type = $type RETURN count(n) as count",
+                    type=node_type.value
                 )
                 record = result.single()
                 node_counts[node_type.value] = record['count'] if record else 0
