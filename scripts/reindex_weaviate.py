@@ -12,9 +12,9 @@ from pathlib import Path
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.code_rag.graph import Neo4jClient, WeaviateIndexer
-from src.code_rag.graph.models import GraphNode, NodeType
-from src.logger import get_logger, setup_logging
+from src.core.graph import Neo4jClient, WeaviateIndexer
+from src.core.graph.models import GraphNode, NodeType
+from src.infra.logger import get_logger, setup_logging
 
 setup_logging()
 logger = get_logger(__name__)

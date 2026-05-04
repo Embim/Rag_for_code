@@ -13,11 +13,11 @@ import sys
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.code_rag.parsers.document_parser import DocumentParser
-from src.code_rag.graph.weaviate_indexer import WeaviateIndexer
-from src.code_rag.graph.models import DocumentNode, create_node_id
-from src.config import WeaviateConfig
-from src.logger import get_logger
+from src.core.parsers.document_parser import DocumentParser
+from src.core.graph.weaviate_indexer import WeaviateIndexer
+from src.core.graph.models import DocumentNode, create_node_id
+from src.infra.config import WeaviateConfig
+from src.infra.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -292,7 +292,7 @@ def main():
     args = parser.parse_args()
 
     # Load config
-    from src.config import WeaviateConfig
+    from src.infra.config import WeaviateConfig
     weaviate_config = WeaviateConfig.from_env()
 
     # Get SOP directory path

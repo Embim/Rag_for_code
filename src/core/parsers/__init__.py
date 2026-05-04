@@ -1,0 +1,150 @@
+"""
+Code parsers for different languages and frameworks.
+
+Parsers extract structured information from code files:
+- Functions, classes, methods
+- Imports and dependencies
+- Docstrings and comments
+- Type information
+
+Available parsers:
+- PythonParser: Basic Python parsing with AST
+- DjangoParser: Django-specific entities (models, views, etc.)
+- FastAPIParser: FastAPI endpoints and Pydantic models
+- ReactParser: React components and hooks
+"""
+
+from pathlib import Path
+from typing import Optional
+
+from .base import (
+    BaseParser,
+    CodeEntity,
+    EntityType,
+    ParseResult,
+    ParsingError,
+    register_parser,
+)
+from .python_parser import PythonParser
+from .django_parser import DjangoParser
+from .fastapi_parser import FastAPIParser
+from .react_parser import ReactParser
+
+
+def get_parser(file_path: Path, framework: Optional[str] = None):
+    """
+    Get appropriate parser for a file based on extension and framework.
+
+    Args:
+        file_path: Path to the file
+        framework: Optional framework hint (django, fastapi, react, etc.)
+
+    Returns:
+        Parser instance
+    """
+    extension = file_path.suffix.lower()
+
+    # Python files
+    if extension == '.py':
+        if framework == 'django':
+            return DjangoParser()
+        elif framework == 'fastapi':
+            return FastAPIParser()
+
+        # Django-conventional file names: используем DjangoParser сразу.
+        # urls.py обычно имеет только `from django.urls import path` — один
+        # indicator, а порог auto-detect требует 2-х → fallback на PythonParser
+        # терял всю информацию (urlpatterns не парсились).
+        if file_path.name in (
+            'urls.py', 'models.py', 'views.py', 'serializers.py', 'admin.py'
+        ):
+            return DjangoParser()
+
+        # Auto-detect framework from file content
+        detected_framework = _detect_python_framework(file_path)
+        if detected_framework == 'django':
+            return DjangoParser()
+        elif detected_framework == 'fastapi':
+            return FastAPIParser()
+        # Default to Python parser
+        return PythonParser()
+
+    # JavaScript/TypeScript files
+    elif extension in {'.js', '.jsx', '.ts', '.tsx'}:
+        if framework in {'react', 'next', 'nextjs'}:
+            return ReactParser()
+        else:
+            # For now, use React parser for all JS/TS
+            return ReactParser()
+
+    else:
+        # Unsupported file type, return None or base parser
+        return None
+
+
+def _detect_python_framework(file_path: Path) -> Optional[str]:
+    """
+    Auto-detect Python framework from file content.
+
+    Returns:
+        'django', 'fastapi', or None
+    """
+    try:
+        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+            # Read first 5000 characters for detection
+            content = f.read(5000)
+
+            # Check for Django imports
+            django_indicators = [
+                'from django.',
+                'import django',
+                'from rest_framework',
+                'import rest_framework',
+                '@api_view',
+                'APIView',
+                'ViewSet',
+                'ModelSerializer',
+            ]
+
+            # Check for FastAPI imports
+            fastapi_indicators = [
+                'from fastapi',
+                'import fastapi',
+                'FastAPI(',
+                '@app.get',
+                '@app.post',
+                '@router.get',
+                '@router.post',
+                'APIRouter',
+            ]
+
+            # Count indicators
+            django_score = sum(1 for indicator in django_indicators if indicator in content)
+            fastapi_score = sum(1 for indicator in fastapi_indicators if indicator in content)
+
+            # Return framework with highest score (min 2 indicators required)
+            if django_score >= 2 and django_score > fastapi_score:
+                return 'django'
+            elif fastapi_score >= 2:
+                return 'fastapi'
+            else:
+                return None
+
+    except Exception:
+        # If file can't be read, return None
+        return None
+
+
+__all__ = [
+    'BaseParser',
+    'CodeEntity', 
+    'EntityType',
+    'ParseResult',
+    'ParsingError',
+    'register_parser',
+    'PythonParser', 
+    'DjangoParser', 
+    'FastAPIParser', 
+    'ReactParser', 
+    'get_parser',
+]

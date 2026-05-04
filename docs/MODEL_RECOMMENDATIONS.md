@@ -209,7 +209,7 @@ agents:
 
 ```bash
 # Telegram бот
-python -m src.telegram_bot.bot
+python -m src.interfaces.telegram_bot.bot
 
 # Команды для тестирования:
 # /ask как работает авторизация
@@ -221,7 +221,7 @@ python -m src.telegram_bot.bot
 
 ```bash
 # Запустите API
-uvicorn src.api.main:app --reload
+uvicorn src.interfaces.api.main:app --reload
 
 # Тест Code Explorer
 curl -X POST http://localhost:8000/api/ask \

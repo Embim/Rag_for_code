@@ -59,7 +59,7 @@ docker-compose ps
 
 ```bash
 source .venv/bin/activate
-uvicorn src.api.main:app --host 0.0.0.0 --port 8000
+uvicorn src.interfaces.api.main:app --host 0.0.0.0 --port 8000
 ```
 
 Swagger-документация будет доступна по адресу http://localhost:8000/docs. При первом запуске сервер создаст admin API-ключ -- сохраните его, он понадобится для всех последующих запросов.
@@ -72,7 +72,7 @@ Swagger-документация будет доступна по адресу h
 Через CLI напрямую (рекомендуется для локальных проектов):
 
 ```bash
-python -m src.code_rag.graph.build_and_index /path/to/repo --clear
+python -m src.core.graph.build_and_index /path/to/repo --clear
 ```
 
 Флаг `--clear` очищает предыдущие данные перед индексацией. Без него новые данные добавятся к существующим.
@@ -103,15 +103,15 @@ curl "http://localhost:8000/api/repos/<name>/status" -H "X-API-Key: <key>"
 curl -X POST "http://localhost:8000/api/search" \
   -H "X-API-Key: <key>" \
   -H "Content-Type: application/json" \
-  -d '{"query": "authentication", "strategy": "hybrid", "limit": 10}'
+  -d '{"query": "authentication", "strategy": "semantic_only", "limit": 10}'
 ```
 
-Доступные стратегии поиска: semantic, hybrid, bm25, ui_to_database, database_to_ui.
+Доступные стратегии поиска: semantic_only (default), ui_to_database, database_to_ui. Алиасы hybrid/bm25/vector маппятся на semantic_only ради обратной совместимости.
 
 RAG-пайплайн с итеративным улучшением (рекомендуется):
 
 ```bash
-curl -X POST "http://localhost:8000/api/ask/langgraph" \
+curl -X POST "http://localhost:8000/api/ask/rag" \
   -H "X-API-Key: <key>" \
   -H "Content-Type: application/json" \
   -d '{"question": "как работает авторизация", "max_iterations": 3}'
@@ -132,7 +132,7 @@ curl -X POST "http://localhost:8000/api/ask" \
 Если в `.env` указан TELEGRAM_BOT_TOKEN, можно запустить бота:
 
 ```bash
-python -m src.telegram_bot.bot
+python -m src.interfaces.telegram_bot.bot
 ```
 
 Команды бота: `/ask <вопрос>` -- задать вопрос по коду, `/analyze <traceback>` -- проанализировать ошибку, `/repos` -- посмотреть список проиндексированных репозиториев.
@@ -145,7 +145,7 @@ RAG-пайплайн работает прямо внутри API-сервера
 Использование напрямую из кода:
 
 ```python
-from src.langgraph_server import run_rag
+from src.search.pipeline.pipelines.rag_search import run as run_rag
 
 result = run_rag("Как работает checkout?", max_iterations=3)
 print(result["answer"])
@@ -156,7 +156,7 @@ print(f"Iterations: {result['iterations']}, Quality: {result['quality_score']:.2
 
 ## Трейсинг через Langfuse
 
-Langfuse позволяет видеть в дашборде каждый RAG-запрос: что нашёл поиск, что передали в LLM и что получили в ответ. Для каждого запроса через `/ask/langgraph` в Langfuse появляется трейс с вложенными спанами:
+Langfuse позволяет видеть в дашборде каждый RAG-запрос: что нашёл поиск, что передали в LLM и что получили в ответ. Для каждого запроса через `/ask/rag` в Langfuse появляется трейс с вложенными спанами:
 
 ```
 Trace: rag_pipeline  (input: query)
@@ -204,7 +204,7 @@ docker-compose up -d
 LANGFUSE_HOST=http://localhost:3000
 ```
 
-После настройки ключей все запросы через `/ask/langgraph` автоматически появляются в Langfuse Dashboard.
+После настройки ключей все запросы через `/ask/rag` автоматически появляются в Langfuse Dashboard.
 
 
 ## Решение проблем
@@ -213,7 +213,7 @@ LANGFUSE_HOST=http://localhost:3000
 
 Если агенты возвращают ошибки, убедитесь что переменная OPENROUTER_API_KEY задана и ключ валидный.
 
-Если поиск работает медленно, попробуйте стратегию semantic вместо hybrid или уменьшите параметр limit.
+Если поиск работает медленно, попробуйте стратегию semantic_only или уменьшите параметр limit.
 
 
 ## Полезные команды

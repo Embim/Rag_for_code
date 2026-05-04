@@ -55,7 +55,7 @@ def check_weaviate_data():
             print("[!] Нет коллекций в Weaviate")
             print("\nВозможно, данные еще не проиндексированы.")
             print("Запустите индексацию:")
-            print("  python -m src.code_rag.graph.build_and_index <repo_path>")
+            print("  python -m src.core.graph.build_and_index <repo_path>")
             print("  или")
             print("  python scripts/reindex_weaviate.py")
         else:

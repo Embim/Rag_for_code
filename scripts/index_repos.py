@@ -9,7 +9,7 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from src.code_rag.graph.build_and_index import build_and_index
+from src.core.graph.build_and_index import build_and_index
 
 print("🚀 Начинаем индексацию репозиториев...")
 print("="*60)

@@ -25,7 +25,7 @@ Code RAG использует несколько типов моделей:
 
 ```bash
 # Просто запустите бота или API
-python -m src.telegram_bot.bot
+python -m src.interfaces.telegram_bot.bot
 
 # Модели скачаются при первом запуске
 ```

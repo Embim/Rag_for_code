@@ -11,7 +11,7 @@ export NEO4J_PASSWORD="password"
 export OPENROUTER_API_KEY="sk-or-..."
 
 # Запуск API
-uvicorn src.api.main:app --host 0.0.0.0 --port 8000
+uvicorn src.interfaces.api.main:app --host 0.0.0.0 --port 8000
 ```
 
 **Документация:** http://localhost:8000/docs

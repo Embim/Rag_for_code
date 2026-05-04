@@ -15,9 +15,9 @@ import tempfile
 import shutil
 from pathlib import Path
 
-from src.code_rag.repo_loader import RepositoryLoader
-from src.code_rag.parsers import get_parser
-from src.code_rag.graph import (
+from src.core.repo_loader import RepositoryLoader
+from src.core.parsers import get_parser
+from src.core.graph import (
     Neo4jClient, GraphBuilder, APILinker, WeaviateIndexer,
     NodeType, RelationshipType
 )
@@ -281,7 +281,7 @@ class TestGraphIntegration:
         self.test_graph_building(test_repo_path, neo4j_client)
 
         # Get components and endpoints
-        from src.code_rag.graph.models import ComponentNode, EndpointNode
+        from src.core.graph.models import ComponentNode, EndpointNode
 
         component_dicts = neo4j_client.find_nodes(node_type=NodeType.COMPONENT, limit=100)
         endpoint_dicts = neo4j_client.find_nodes(node_type=NodeType.ENDPOINT, limit=100)
@@ -374,7 +374,7 @@ class TestGraphIntegration:
     @pytest.mark.slow
     def test_complete_pipeline(self, test_repo_path, neo4j_client, weaviate_indexer):
         """Test complete pipeline from repository to searchable graph."""
-        from src.code_rag.graph.build_and_index import GraphPipeline
+        from src.core.graph.build_and_index import GraphPipeline
 
         # Create pipeline
         pipeline = GraphPipeline(

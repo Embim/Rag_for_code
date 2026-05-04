@@ -32,7 +32,7 @@ from typing import Optional, List, Dict, Any, Callable
 from threading import Thread
 import time
 
-from ..logger import get_logger
+from src.infra.logger import get_logger
 
 logger = get_logger(__name__)
 

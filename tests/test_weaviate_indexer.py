@@ -7,7 +7,7 @@ Tests embedding generation, indexing, and search functionality.
 import pytest
 from unittest.mock import Mock, MagicMock
 
-from src.code_rag.graph import (
+from src.core.graph import (
     WeaviateIndexer,
     GraphNode, FunctionNode, ClassNode, EndpointNode, ComponentNode,
     NodeType

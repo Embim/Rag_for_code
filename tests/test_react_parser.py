@@ -5,8 +5,8 @@ Tests for React/TypeScript parser.
 import pytest
 from pathlib import Path
 
-from src.code_rag.parsers.react_parser import ReactParser
-from src.code_rag.parsers.base import EntityType
+from src.core.parsers.react_parser import ReactParser
+from src.core.parsers.base import EntityType
 
 
 class TestReactParser:

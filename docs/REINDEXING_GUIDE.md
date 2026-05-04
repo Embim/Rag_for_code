@@ -33,7 +33,7 @@ python scripts/full_reindex.py
 
 **Через Python:**
 ```python
-from src.code_rag.graph.neo4j_client import Neo4jClient
+from src.core.graph.neo4j_client import Neo4jClient
 
 client = Neo4jClient(
     uri="bolt://localhost:7687",
@@ -99,7 +99,7 @@ python scripts/reindex_weaviate.py  # Если такой скрипт есть
 ### Через Python код
 
 ```python
-from src.code_rag.graph.build_and_index import build_and_index
+from src.core.graph.build_and_index import build_and_index
 from pathlib import Path
 
 # Путь к репозиториям

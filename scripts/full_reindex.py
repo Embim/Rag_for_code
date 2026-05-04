@@ -10,11 +10,11 @@ from pathlib import Path
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.code_rag.graph.neo4j_client import Neo4jClient
-from src.code_rag.graph.weaviate_indexer import WeaviateIndexer
-from src.code_rag.graph.build_and_index import build_and_index
-from src.logger import get_logger
-from src.config.search import get_search_config
+from src.core.graph.neo4j_client import Neo4jClient
+from src.core.graph.weaviate_indexer import WeaviateIndexer
+from src.core.graph.build_and_index import build_and_index
+from src.infra.logger import get_logger
+from src.infra.config.search import get_search_config
 
 logger = get_logger(__name__)
 

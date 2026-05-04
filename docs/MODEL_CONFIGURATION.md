@@ -197,10 +197,10 @@ RERANKER_MODEL=cross-encoder/ms-marco-MiniLM-L-6-v2
 ### 4. Перезапустите сервисы
 ```bash
 # Telegram бот
-python -m src.telegram_bot.bot
+python -m src.interfaces.telegram_bot.bot
 
 # Или API
-uvicorn src.api.main:app --reload
+uvicorn src.interfaces.api.main:app --reload
 ```
 
 ---
@@ -309,7 +309,7 @@ EMBEDDING_MODEL=BAAI/bge-m3
 
 ```bash
 # Запустите бота
-python -m src.telegram_bot.bot
+python -m src.interfaces.telegram_bot.bot
 
 # Тестируйте команды:
 /ask как работает авторизация
@@ -321,7 +321,7 @@ python -m src.telegram_bot.bot
 
 ```bash
 # Запустите API
-uvicorn src.api.main:app --reload
+uvicorn src.interfaces.api.main:app --reload
 
 # Тест Code Explorer
 curl -X POST http://localhost:8000/api/ask \

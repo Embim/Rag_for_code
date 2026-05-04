@@ -7,8 +7,8 @@ import tempfile
 import shutil
 from pathlib import Path
 
-from src.code_rag.repo_loader import RepositoryLoader, RepositoryInfo
-from src.code_rag.project_detector import ProjectDetector
+from src.core.repo_loader import RepositoryLoader, RepositoryInfo
+from src.core.project_detector import ProjectDetector
 
 
 class TestRepositoryLoader:

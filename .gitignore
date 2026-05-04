@@ -48,7 +48,7 @@ models/
 
 # Processed data
 data/processed/
-
+/logs
 # Outputs
 outputs/
 /data
